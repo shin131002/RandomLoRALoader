@@ -434,8 +434,8 @@ class RandomLoRALoader:
             print(f"[RandomLoRALoader] imagesが見つかりません: {lora_path}")
             return "", ""
         
-        # metaを持つ画像のみをフィルタ
-        valid_images = [img for img in images if "meta" in img]
+        # metaを持つ画像のみをフィルタ（metaがNoneでないことも確認）
+        valid_images = [img for img in images if "meta" in img and img["meta"] is not None]
         if not valid_images:
             print(f"[RandomLoRALoader] metaを持つ画像が見つかりません: {lora_path}")
             return "", ""
