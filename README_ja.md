@@ -4,6 +4,8 @@
 
 ComfyUIでLoRAをランダムに選択・適用するカスタムノードです。複数のフォルダから異なる種類のLoRA（スタイル、キャラクター、コンセプトなど）を組み合わせて使用できます。
 
+![ワークフロー例](./images/workflow.webp)
+
 ## 主な機能
 
 - **3グループ対応**: 最大3つの異なるフォルダからLoRAを選択可能
@@ -60,6 +62,8 @@ ComfyUIを再起動してください。
 ### Wildcard Encode (Inspire)との連携（推奨ワークフロー）
 
 このノードはWildcard Encode (Inspire)と組み合わせることで、wildcardによる動的プロンプト生成とランダムLoRA選択の両方を実現できます。
+
+![Wildcard Encodeワークフロー](./images/wildcard_workflow.webp)
 
 #### 推奨接続例
 

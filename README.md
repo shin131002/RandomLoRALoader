@@ -4,6 +4,8 @@
 
 A ComfyUI custom node for randomly selecting and applying LoRAs from multiple folders. You can combine different types of LoRAs (styles, characters, concepts, etc.) from separate folders.
 
+![Workflow Example](./images/workflow.webp)
+
 ## Key Features
 
 - **3-Group Support**: Select LoRAs from up to 3 different folders
@@ -76,6 +78,8 @@ Or manually delete the RandomLoRALoader folder and restart ComfyUI.
 ### Wildcard Encode Integration (Recommended)
 
 This node works seamlessly with Wildcard Encode (Inspire) for dynamic prompt generation combined with random LoRA selection.
+
+![Wildcard Encode Workflow](./images/wildcard_workflow.webp)
 
 #### Recommended Connection
 
