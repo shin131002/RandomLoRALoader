@@ -7,7 +7,9 @@ ComfyUIでLoRAをランダムに選択・適用するカスタムノードです
 ## 主な機能
 
 - **3グループ対応**: 最大3つの異なるフォルダからLoRAを選択可能
-- **外部JSON読み取り**: Civitai Helperなどが生成した`.metadata.json`ファイルからトリガーワードと作例プロンプトを自動取得
+- **外部メタデータ読み取り**: メタデータファイルからトリガーワードと作例プロンプトを自動取得
+  - `.metadata.json`形式（ComfyUI Lora Manager）- 優先度1
+  - `.info`形式（Civitai Helper）- 優先度2
 - **強度ランダム化**: 範囲指定で強度をランダムに変化（例: `0.4-0.8`）
 - **柔軟なトリガーワード取得**:
   - `json_combined`: 全トリガーワードパターンを結合（重複除去）
@@ -327,21 +329,41 @@ negative_text: bad quality, worst quality
 
 ## 必要なファイル構成
 
-LoRAファイルと同じフォルダに`.metadata.json`ファイルが必要です：
+LoRAファイルと同じフォルダにメタデータファイルが必要です。
+
+対応形式（優先順位順）:
+
+### 1. ComfyUI Lora Manager形式（推奨）
 
 ```
 /path/to/lora/
 ├── style_anime_v2.safetensors
-├── style_anime_v2.metadata.json  ← 必須
+├── style_anime_v2.metadata.json  ← ComfyUI Lora Manager
 ├── character_alice.safetensors
-└── character_alice.metadata.json  ← 必須
+└── character_alice.metadata.json
 ```
 
-### metadata.jsonの生成方法
+### 2. Civitai Helper形式
 
-以下のツールで自動生成できます：
+```
+/path/to/lora/
+├── style_anime_v2.safetensors
+├── style_anime_v2.info  ← Civitai Helper
+├── character_alice.safetensors
+└── character_alice.info
+```
+
+**優先順位:** `.metadata.json`と`.info`の両方が存在する場合、`.metadata.json`が使用されます。
+
+### メタデータファイルの生成方法
+
+**ComfyUI Lora Manager（推奨）:**
+- [ComfyUI Lora Manager](https://github.com/willmiao/ComfyUI-Lora-Manager)
+- `.metadata.json`ファイルを生成
+
+**Civitai Helper:**
 - [Civitai Helper](https://github.com/butaixianran/Stable-Diffusion-Webui-Civitai-Helper)
-- その他のLoRA管理ツール
+- `.info`ファイルを生成（こちらにも対応）
 
 ## MODEL強度とCLIP強度について
 
@@ -473,9 +495,9 @@ v1.0.0以降では自動的にLoRA構文が削除されるため、この問題�
 
 ### トリガーワードが取得できない
 
-- `.metadata.json`ファイルが存在するか確認
+- メタデータファイルが存在するか確認（`.metadata.json`または`.info`）
 - JSONファイル内に`civitai.trainedWords`または`civitai.images`が存在するか確認
-- ファイル名が`{LoRAファイル名}.metadata.json`と一致しているか確認
+- ファイル名が`{LoRAファイル名}.metadata.json`または`{LoRAファイル名}.info`と一致しているか確認
 
 ### LoRAが適用されない
 
@@ -587,4 +609,5 @@ Copyright (c) 2025
 ## 参考リンク
 
 - [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
-- [Civitai Helper](https://github.com/butaixianran/Stable-Diffusion-Webui-Civitai-Helper)
+- [ComfyUI Lora Manager](https://github.com/willmiao/ComfyUI-Lora-Manager) - `.metadata.json`を生成（推奨）
+- [Civitai Helper](https://github.com/butaixianran/Stable-Diffusion-Webui-Civitai-Helper) - `.info`を生成（対応済み）

@@ -322,6 +322,10 @@ class RandomLoRALoader:
         """
         外部JSONファイルからメタデータを読み込む
         
+        優先順位:
+        1. {filename}.metadata.json (ComfyUI Lora Manager形式)
+        2. {filename}.info (Civitai Helper形式)
+        
         Args:
             lora_path: LoRAファイルパス (.safetensors)
         
@@ -330,18 +334,28 @@ class RandomLoRALoader:
         """
         # .safetensorsを除いたファイル名を取得
         base_name = os.path.splitext(lora_path)[0]
-        json_path = f"{base_name}.metadata.json"
         
-        if not os.path.exists(json_path):
-            print(f"[RandomLoRALoader] JSONファイルが見つかりません: {json_path}")
-            return None
+        # 優先順位1: .metadata.json (ComfyUI Lora Manager)
+        json_path_metadata = f"{base_name}.metadata.json"
+        if os.path.exists(json_path_metadata):
+            try:
+                with open(json_path_metadata, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"[RandomLoRALoader] JSON読み込みエラー ({json_path_metadata}): {e}")
         
-        try:
-            with open(json_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"[RandomLoRALoader] JSON読み込みエラー ({json_path}): {e}")
-            return None
+        # 優先順位2: .info (Civitai Helper)
+        json_path_info = f"{base_name}.info"
+        if os.path.exists(json_path_info):
+            try:
+                with open(json_path_info, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"[RandomLoRALoader] JSON読み込みエラー ({json_path_info}): {e}")
+        
+        # どちらも見つからない
+        print(f"[RandomLoRALoader] メタデータファイルが見つかりません: {base_name}.metadata.json または {base_name}.info")
+        return None
     
     def _get_trigger_words_combined(self, lora_path):
         """
