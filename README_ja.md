@@ -1,0 +1,590 @@
+# Random LoRA Loader for ComfyUI
+
+**[English README](./README.md) | 日本語版**
+
+ComfyUIでLoRAをランダムに選択・適用するカスタムノードです。複数のフォルダから異なる種類のLoRA（スタイル、キャラクター、コンセプトなど）を組み合わせて使用できます。
+
+## 主な機能
+
+- **3グループ対応**: 最大3つの異なるフォルダからLoRAを選択可能
+- **外部JSON読み取り**: Civitai Helperなどが生成した`.metadata.json`ファイルからトリガーワードと作例プロンプトを自動取得
+- **強度ランダム化**: 範囲指定で強度をランダムに変化（例: `0.4-0.8`）
+- **柔軟なトリガーワード取得**:
+  - `json_combined`: 全トリガーワードパターンを結合（重複除去）
+  - `json_random`: ランダムに1パターン選択
+  - `json_sample_prompt`: 作例プロンプトをランダムに取得
+- **作例プロンプトの最適化**: 作例内のLoRA記述を自動削除し、ノード設定の強度を適用
+- **2つのテキスト出力**: positive_textとnegative_textを個別に出力
+- **ComfyUI標準のseed制御**: fixed/randomize/increment/decrementに対応
+
+## インストール
+
+### 必要な環境
+
+- ComfyUI（動作確認済み環境があれば、そのまま使えます）
+- **追加ライブラリのインストール: 不要** ✅
+
+### 手順
+
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/your-repo/RandomLoRALoader.git
+# または
+# 手動でRandomLoRALoaderフォルダを作成し、ファイルをコピー
+```
+
+ComfyUIを再起動してください。
+
+**注意:** Python標準ライブラリとComfyUI付属ライブラリのみ使用しているため、`pip install`などの追加インストールは一切不要です。
+
+## 使い方
+
+### 基本的な使用方法
+
+1. **ノードを配置**: ノードブラウザから「Random LoRA Loader」を検索して配置
+2. **MODEL/CLIPを接続**: ベースモデルとCLIPを入力に接続
+3. **フォルダパスを設定**: 
+   - グループ1: スタイル用LoRAフォルダのパス
+   - グループ2: キャラクター用LoRAフォルダのパス（オプション）
+   - グループ3: コンセプト用LoRAフォルダのパス（オプション）
+4. **各グループの設定**:
+   - `num_loras`: 各グループから選択するLoRA個数
+   - `model_strength` / `clip_strength`: 適用強度（固定値またはランダム範囲）
+5. **出力を接続**:
+   - `MODEL` / `CLIP`: KSamplerなどに接続
+   - `positive` / `negative`: Set ConditioningまたはKSamplerに接続
+   - `positive_text` / `negative_text`: Show Textノードで確認（推奨）
+
+### Wildcard Encode (Inspire)との連携（推奨ワークフロー）
+
+このノードはWildcard Encode (Inspire)と組み合わせることで、wildcardによる動的プロンプト生成とランダムLoRA選択の両方を実現できます。
+
+#### 推奨接続例
+
+```
+[Wildcard Encode (Inspire)]
+  text: "__style__, {red|blue|green}, <lora:base_effect:0.5>"
+  ↓
+  ├─ populated_text ──→ [Random LoRA Loader]
+  │                     additional_prompt
+  └─ MODEL/CLIP ──────→ model/clip入力
+  
+[Random LoRA Loader]
+  フォルダ1: character用LoRA
+  フォルダ2: concept用LoRA
+  ↓
+  MODEL/CLIP/CONDITIONING → [KSampler]
+```
+
+#### 動作の流れ
+
+1. **Wildcard Encodeの処理**:
+   - wildcard展開: `__style__` → "anime style"
+   - 選択肢展開: `{red|blue|green}` → "blue"
+   - LoRA構文処理: `<lora:base_effect:0.5>` → MODELに適用
+   - 結果: `populated_text` = "anime style, blue, <lora:base_effect:0.5>"
+
+2. **Random LoRA Loaderの処理**:
+   - `populated_text`から**LoRA構文を自動削除**: "anime style, blue"
+   - ランダムLoRA選択: character_alice, concept_magic
+   - 最終プロンプト: "anime style, blue, alice, blonde hair, magic circle"
+   - MODEL/CLIP: base_effect + character_alice + concept_magic（全て適用済み）
+
+#### メリット
+
+- ✅ wildcard機能をWildcard Encodeに任せる（専門ツールの利用）
+- ✅ ランダムLoRA選択をこのノードに任せる（シンプルな設定）
+- ✅ プロンプト情報が完全に引き継がれる
+- ✅ LoRA構文が自動クリーンアップされる（ノイズなし）
+
+### 3グループの活用例
+
+```
+グループ1: style用LoRAフォルダ
+  - num_loras_1: 2
+  - model_strength_1: "0.6-0.9"  ← ランダム
+  - clip_strength_1: "0.6-0.9"   ← ランダム
+
+グループ2: character用LoRAフォルダ
+  - num_loras_2: 1
+  - model_strength_2: "1.0"      ← 固定
+  - clip_strength_2: "1.0"       ← 固定
+
+グループ3: 未使用
+  - lora_folder_path_3: (空)
+  - num_loras_3: 0
+
+→ 結果: style 2個（可変強度）+ character 1個（固定強度）= 合計3個のLoRAが適用
+```
+
+## 設定項目
+
+### 共通設定
+
+| 項目 | 説明 | デフォルト |
+|------|------|------------|
+| `token_normalization` | トークン正規化方式 | `none` |
+| `weight_interpretation` | プロンプト強調記法の解釈方式 | `A1111` |
+| `additional_prompt` | 追加プロンプト（全LoRAのトリガーワードと結合） | (空) |
+| `trigger_word_source` | トリガーワード取得元 | `json_combined` |
+| `seed` | ランダム選択のシード値 | `0` |
+
+#### additional_promptに関する重要な注意事項
+
+`additional_prompt`欄の動作仕様：
+
+**✅ 対応している:**
+- 通常のプロンプトテキスト
+- 他ノードからのテキスト入力接続（例: Wildcard Encodeの`populated_text`）
+
+**❌ 対応していない（自動削除されます）:**
+- `<lora:xxx:0.8>` 形式のLoRA構文
+- `{a|b|c}` 形式のwildcard構文
+- `__filename__` 形式のwildcard構文
+
+**理由:**
+- このノードはフォルダ指定によるLoRA適用を行います
+- wildcard機能は専用ノード（Wildcard Encode等）に任せる設計です
+- LoRA構文を記述しても解釈されず、**ファイル名が意味のあるトークンとしてノイズになります**
+
+**例（問題のあるケース）:**
+```
+入力: "1girl, <lora:anime_style:0.8>, beautiful"
+↓
+CLIPのトークン化: [1girl, lora, anime, style, 0, 8, beautiful]
+                            ^^^^^ ^^^^^
+                            意図しない単語がプロンプトに追加される ❌
+```
+
+**正しい使い方:**
+```
+additional_prompt: "1girl, beautiful"  ← LoRA構文なし ✅
+LoRA適用: フォルダ指定機能を使用 ✅
+```
+
+または、Wildcard Encodeからの接続時は自動的にLoRA構文が削除されます：
+```
+[Wildcard Encode] populated_text: "1girl, <lora:style:0.8>, beautiful"
+       ↓
+[このノード] additional_prompt受信 → LoRA構文自動削除
+       ↓
+最終プロンプト: "1girl, beautiful" ✅
+```
+
+### グループ設定（1〜3）
+
+各グループで以下の項目を個別に設定可能：
+
+| 項目 | 説明 | デフォルト |
+|------|------|------------|
+| `lora_folder_path_X` | LoRAフォルダの絶対パス | (空) |
+| `include_subfolders_X` | サブフォルダを含めるか | `true` |
+| `model_strength_X` | MODELへの適用強度 | `"1.0"` |
+| `clip_strength_X` | CLIPへの適用強度 | `"1.0"` |
+| `num_loras_X` | 選択するLoRA個数 | グループ1: `1`, グループ2/3: `0` |
+
+## 強度の指定方法（重要）
+
+強度欄には**固定値**または**ランダム範囲**を指定できます。
+
+### 固定値の場合
+
+```
+入力: "1.0"
+→ 常に 1.0 で適用
+
+入力: "0.55"
+→ 常に 0.55 で適用
+
+入力: "0.8"
+→ 常に 0.8 で適用
+```
+
+**特徴:**
+- 入力した数値がそのまま使用されます
+- 小数第2位まで指定可能（例: `0.55`）
+
+### ランダム範囲の場合
+
+```
+入力: "0.4-0.8"
+→ 0.4, 0.5, 0.6, 0.7, 0.8 からランダムに選択（0.1刻み）
+
+入力: "0.5-1.0"
+→ 0.5, 0.6, 0.7, 0.8, 0.9, 1.0 からランダムに選択
+
+入力: "0.44-0.82"
+→ 0.4, 0.5, 0.6, 0.7, 0.8 からランダムに選択
+   （範囲は自動的に小数第1位に丸められます）
+```
+
+**特徴:**
+- ハイフン（`-`）で範囲を指定
+- 0.1刻みで値が生成されます
+- 範囲の上限・下限が小数第2位以下の場合、小数第1位に丸められます
+- 毎回実行するたびに異なる値が選ばれます
+
+### エラー処理
+
+```
+入力: "abc" または不正な形式
+→ エラーログが出力され、強度 1.0 で処理されます
+```
+
+**エラーメッセージ例:**
+```
+[RandomLoRALoader] ❌ 強度 'abc' を解析できません、1.0を使用
+[RandomLoRALoader] 💡 使用例: '1.0' または '0.4-0.8'
+```
+
+### 実際の強度確認
+
+実際に使用された強度は `positive_text` 出力で確認できます：
+
+```
+<lora:style_anime:0.7:0.6>, anime style, vibrant,
+               ↑   ↑
+          MODEL強度 CLIP強度
+```
+
+**推奨:** Show Textノードを `positive_text` に接続して、実際の強度を確認してください。
+
+## トリガーワード取得方式
+
+### json_combined（全結合）
+
+全トリガーワードパターンを結合し、重複を除去します。
+
+**例:**
+```json
+"trainedWords": [
+  "character, red hair, blue eyes, uniform",
+  "character, red hair, blue eyes, casual clothes"
+]
+```
+↓
+```
+出力: character, red hair, blue eyes, uniform, casual clothes
+```
+
+### json_random（ランダム選択）
+
+トリガーワードパターンからランダムに1つを選択します。
+
+**例:**
+```json
+"trainedWords": [
+  "character, red hair, blue eyes, uniform",
+  "character, red hair, blue eyes, casual clothes"
+]
+```
+↓
+```
+出力: character, red hair, blue eyes, casual clothes (ランダム)
+```
+
+### json_sample_prompt（作例取得）
+
+JSONの作例プロンプトからランダムに1つ取得します。
+
+- positive_textとnegative_textの両方が出力されます
+- 作例内の`<lora:xxx:x.x>`記述は自動削除されます
+- ノード設定の強度で新しいLoRA記述が生成されます
+
+**例:**
+```json
+"images": [{
+  "meta": {
+    "prompt": "1girl, <lora:style:0.8>, beautiful",
+    "negativePrompt": "bad quality, worst quality"
+  }
+}]
+```
+↓
+```
+positive_text: 1girl, beautiful (LoRA記述削除済み)
+negative_text: bad quality, worst quality
+```
+
+## 出力
+
+| 出力名 | 型 | 説明 |
+|--------|-----|------|
+| `MODEL` | MODEL | LoRA適用後のモデル |
+| `CLIP` | CLIP | LoRA適用後のCLIP |
+| `positive_text` | STRING | LoRA情報とpositiveプロンプト |
+| `negative_text` | STRING | negativeプロンプト（json_sample_promptのみ） |
+| `positive` | CONDITIONING | positiveコンディショニング |
+| `negative` | CONDITIONING | negativeコンディショニング |
+
+### positive_text出力例
+
+```
+1girl, beautiful,
+<lora:style_anime_v2:0.7:0.6>, anime style, vibrant colors,
+<lora:character_alice:1.0:1.0>, alice, blonde hair, blue eyes,
+```
+
+## 必要なファイル構成
+
+LoRAファイルと同じフォルダに`.metadata.json`ファイルが必要です：
+
+```
+/path/to/lora/
+├── style_anime_v2.safetensors
+├── style_anime_v2.metadata.json  ← 必須
+├── character_alice.safetensors
+└── character_alice.metadata.json  ← 必須
+```
+
+### metadata.jsonの生成方法
+
+以下のツールで自動生成できます：
+- [Civitai Helper](https://github.com/butaixianran/Stable-Diffusion-Webui-Civitai-Helper)
+- その他のLoRA管理ツール
+
+## MODEL強度とCLIP強度について
+
+### 基本的な考え方
+
+- **MODEL強度**: 画像そのものへの影響（画風、構図、色彩）
+- **CLIP強度**: プロンプト理解への影響（トリガーワードの効き方）
+
+### 推奨設定
+
+**初心者・一般的な使用:**
+```
+model_strength: "1.0"
+clip_strength: "1.0"
+```
+両方同じ値にするのが基本です。
+
+**上級者・微調整:**
+```
+model_strength: "0.7"
+clip_strength: "1.0"
+```
+画風は控えめに、トリガーワードはしっかり効かせたい場合など。
+
+**ランダム化で実験:**
+```
+model_strength: "0.6-0.9"
+clip_strength: "0.6-0.9"
+```
+様々な強度の組み合わせを試したい場合。
+
+## Token Normalization
+
+複数のプロンプトを結合する際のバランス調整：
+
+- **none**: トークン数が多いほど影響力大
+- **mean**: 平均値で正規化
+- **length**: 長さで正規化
+- **length+mean**: 両方を組み合わせ
+
+## Weight Interpretation
+
+プロンプト内の強調記法の解釈方式：
+
+- **comfy**: ComfyUI方式（絶対値、強調されすぎになりやすい）
+- **A1111**: Automatic1111方式（正規化、バランス良い）← 推奨
+- **compel**: Compel方式
+- **comfy++**: ComfyUI拡張方式
+- **down_weight**: 減衰方式
+
+## Seed制御
+
+ComfyUIの標準`control_before_generate`機能に対応：
+
+- **fixed**: 固定seed（常に同じLoRAを選択、同じ強度）
+- **randomize**: 毎回ランダム
+- **increment**: 実行ごとに+1
+- **decrement**: 実行ごとに-1
+
+## 技術的な詳細
+
+### LoRA適用の仕組み
+
+1. 各グループからLoRAをランダム選択（全グループ共通seed）
+2. 各LoRAに対して強度をパース（固定値またはランダム範囲から選択）
+3. 選択されたLoRAを順次MODELとCLIPに適用
+4. トリガーワードを取得
+5. 全グループのトリガーワードを結合してCONDITIONINGを生成
+
+### 強度ランダム化の仕組み
+
+```python
+# 入力: "0.4-0.8"
+# 処理:
+1. 範囲を解析: min=0.4, max=0.8
+2. 0.1刻みのリスト生成: [0.4, 0.5, 0.6, 0.7, 0.8]
+3. ランダムに1つ選択: 例えば 0.6
+4. MODEL/CLIPに適用
+```
+
+**重要:** MODEL強度とCLIP強度は**独立してランダム選択**されます。
+- `model_strength: "0.4-0.8"`, `clip_strength: "0.4-0.8"` の場合
+- MODELが0.6、CLIPが0.7のように**異なる値**になる可能性があります
+
+### 重複選択について
+
+- 各グループ内では同じLoRAの重複選択なし
+- 指定個数 > ファイル数の場合、全選択後に再選択で不足分を埋める
+
+### エラー処理
+
+- フォルダパス空またはnum_loras=0: スキップ（エラーなし）
+- 全グループ空: 空テキスト出力（エラーなし）
+- JSONファイル未発見: 空文字列を返す（ログ出力）
+- 強度パースエラー: 1.0で処理（ログ出力）
+
+## トラブルシューティング
+
+### additional_promptにLoRA構文を書いたのに効かない
+
+**症状:**
+```
+additional_prompt: "<lora:anime_style:0.8>, 1girl"
+→ anime_styleが適用されない
+```
+
+**原因:**
+このノードは`<lora:xxx:0.8>`構文を解釈しません。LoRA構文は自動的に削除されます。
+
+**対策:**
+1. LoRA適用はフォルダ指定機能を使用してください
+2. Wildcard Encode (Inspire)と連携する場合は、そちらでLoRA構文を処理してください
+
+### プロンプトに意図しない単語が含まれる
+
+**症状:**
+```
+additional_prompt: "<lora:anime_style:0.8>"
+→ "anime", "style"という単語が勝手に追加される
+```
+
+**原因:**
+v1.0.0以降では自動的にLoRA構文が削除されるため、この問題は発生しません。
+古いバージョンを使用している場合は、LoRA構文のファイル名部分がトークンとして解釈されていました。
+
+**対策:**
+- ノードを最新版に更新してください
+- additional_promptにはLoRA構文を書かないでください
+
+### トリガーワードが取得できない
+
+- `.metadata.json`ファイルが存在するか確認
+- JSONファイル内に`civitai.trainedWords`または`civitai.images`が存在するか確認
+- ファイル名が`{LoRAファイル名}.metadata.json`と一致しているか確認
+
+### LoRAが適用されない
+
+- フォルダパスが正しいか確認
+- `num_loras`が0になっていないか確認
+- ComfyUIのコンソールでエラーログを確認
+
+### 強度が意図した値にならない
+
+- `positive_text`出力をShow Textで確認
+- `<lora:xxx:0.7:0.6>`のように実際の強度が表示されます
+- ランダム範囲指定の場合、毎回異なる値になります
+- コンソールで強度選択のログを確認: `[RandomLoRALoader] 強度範囲 0.4-0.8 から 0.6 を選択`
+
+### 強度入力でエラーが出る
+
+**症状:**
+```
+[RandomLoRALoader] ❌ 強度 'abc' を解析できません、1.0を使用
+```
+
+**対策:**
+- 正しい形式で入力: `"1.0"` または `"0.4-0.8"`
+- 範囲指定は必ずハイフン（`-`）で区切る
+- 不正な入力でもノードはクラッシュせず、1.0で動作します
+
+### 初期値が表示されない
+
+- ComfyUIを完全に再起動
+- ブラウザのキャッシュをクリア（Ctrl+Shift+R）
+- ノードを削除して新規配置
+
+### コンソールに「lora key not loaded」メッセージが大量に出る
+
+**症状:**
+```
+lora key not loaded: lora_unet_input_blocks_4_1_proj_in.alpha
+lora key not loaded: lora_unet_input_blocks_4_1_proj_in.lora_down.weight
+...
+```
+
+**原因と対策:**
+
+このメッセージはComfyUI本体が出力する互換性警告で、**機能には影響ありません**。LoRAファイルに含まれる一部のキーが現在のモデルと互換性がない場合に表示されますが、互換性のあるキーだけが正常に適用されます。
+
+v1.0.0以降では、これらの警告メッセージを自動的に抑制するようになっています。もし大量に表示される場合は：
+
+1. ノードファイルが最新版か確認
+2. ComfyUIを再起動
+3. それでも表示される場合は、機能に問題がなければ無視して構いません
+
+## ライセンス
+
+MIT License
+
+## 更新履歴
+
+### v1.0.0 (2024-12-30)
+- 初回公開リリース
+- 3グループ対応（異なるフォルダから選択可能）
+- 強度ランダム化機能（範囲指定: `0.4-0.8`）
+- 外部JSON読み取り（Civitai Helper対応）
+- 作例プロンプト内のLoRA記述自動削除
+- **additional_prompt内のLoRA構文自動削除**（ノイズ防止）
+- positive_text/negative_textの個別出力
+- Wildcard Encode (Inspire)との連携対応
+- 完全ローカル動作（API不要）
+
+## 免責事項・サポートポリシー
+
+### 本ノードについて
+
+このカスタムノードは個人的な使用目的で開発したものを公開しています。
+
+### サポートについて
+
+- ❌ **技術サポートは提供しません**
+  - 使い方の質問
+  - 環境構築の支援
+  - トラブルシューティングの個別対応
+
+- ❌ **動作保証はありません**
+  - 特定環境での動作確認
+  - 将来のComfyUI更新への対応保証
+  - データ損失等の責任
+
+### コミュニティ貢献について
+
+以下は歓迎しますが、対応は保証しません：
+
+- ✅ バグ報告（Issue）
+- ✅ プルリクエスト
+- ✅ 機能提案
+
+### 使用条件
+
+- 使用は完全に自己責任です
+- 本番環境での使用前に十分なテストを行ってください
+- 問題が発生しても作者は一切の責任を負いません
+
+## ライセンス
+
+MIT License
+
+Copyright (c) 2025
+
+本ソフトウェアは「現状のまま」提供され、明示的または黙示的な保証を一切行いません。
+
+## 参考リンク
+
+- [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
+- [Civitai Helper](https://github.com/butaixianran/Stable-Diffusion-Webui-Civitai-Helper)
