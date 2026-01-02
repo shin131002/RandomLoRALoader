@@ -9,14 +9,16 @@ A ComfyUI custom node for randomly selecting and applying LoRAs from multiple fo
 ## Key Features
 
 - **3-Group Support**: Select LoRAs from up to 3 different folders
-- **External Metadata Reading**: Automatically retrieve trigger words and sample prompts from metadata files
-  - `.metadata.json` format (ComfyUI Lora Manager) - Priority 1
-  - `.info` format (Civitai Helper) - Priority 2
+- **Multi-Source Metadata Reading**: Automatically retrieve trigger words and sample prompts with priority order:
+  1. `.metadata.json` format (ComfyUI Lora Manager) - Priority 1
+  2. `.info` format (Civitai Helper) - Priority 2
+  3. **Embedded metadata in LoRA file** - Priority 3 (NEW)
 - **Strength Randomization**: Randomize strength with range specification (e.g., `0.4-0.8`)
 - **Flexible Trigger Word Retrieval**:
   - `json_combined`: Combine all trigger word patterns (with deduplication)
   - `json_random`: Randomly select one pattern
   - `json_sample_prompt`: Randomly retrieve sample prompts
+  - **`metadata`**: Read directly from embedded metadata (NEW)
 - **Sample Prompt Optimization**: Automatically remove LoRA syntax from samples and apply node-configured strength
 - **Dual Text Outputs**: Separate positive_text and negative_text outputs
 - **ComfyUI Standard Seed Control**: Supports fixed/randomize/increment/decrement
@@ -354,6 +356,30 @@ positive_text: 1girl, beautiful (LoRA syntax removed)
 negative_text: bad quality, worst quality
 ```
 
+### metadata (Embedded Metadata Only - NEW)
+
+Reads trigger words **directly from LoRA file's embedded metadata**, ignoring external `.metadata.json` and `.info` files.
+
+**Supported metadata fields:**
+- `ss_tag_frequency`: kohya_ss format tag frequency (extracts top 20 tags)
+- `modelspec.trigger_word`: Trigger word
+- `ss_output_name`: Model name
+
+**Use case:**
+- When you want to use only the metadata embedded by the LoRA trainer
+- When external JSON files contain incorrect information
+- For LoRAs without external metadata files
+
+**Example:**
+```
+LoRA file contains embedded metadata:
+  ss_tag_frequency: {"dataset1": {"alice": 150, "blonde": 120, ...}}
+  ↓
+Output: alice, blonde, blue_eyes, ...
+```
+
+**Note:** Other modes (`json_combined`, `json_random`, `json_sample_prompt`) use external files with priority, falling back to embedded metadata if external files are not found.
+
 ## Outputs
 
 | Output | Type | Description |
@@ -375,9 +401,15 @@ negative_text: bad quality, worst quality
 
 ## Required File Structure
 
-Metadata file required in same folder as LoRA file.
+**Metadata files or embedded data** required for trigger word retrieval.
 
-Supported formats (in priority order):
+### Priority Order
+
+The node reads metadata in the following priority order:
+
+1. **`.metadata.json`** (ComfyUI Lora Manager format)
+2. **`.info`** (Civitai Helper format)
+3. **Embedded metadata in LoRA file** (Always available if LoRA was trained with metadata)
 
 ### 1. ComfyUI Lora Manager format (Recommended)
 
@@ -399,7 +431,17 @@ Supported formats (in priority order):
 └── character_alice.info
 ```
 
-**Priority:** If both `.metadata.json` and `.info` exist, `.metadata.json` is used.
+### 3. Embedded metadata (No external file needed)
+
+```
+/path/to/lora/
+├── style_anime_v2.safetensors  ← Contains embedded metadata
+└── character_alice.safetensors  ← Contains embedded metadata
+```
+
+**Note:** 
+- If external files (`.metadata.json` or `.info`) exist, they take priority over embedded metadata (except when using `trigger_word_source: metadata`)
+- When `trigger_word_source` is set to `metadata`, only embedded metadata is read, ignoring external files
 
 ### Generating metadata files
 
@@ -411,13 +453,24 @@ Supported formats (in priority order):
 - [Civitai Helper](https://github.com/butaixianran/Stable-Diffusion-Webui-Civitai-Helper)
 - Generates `.info` files (also supported)
 
+**Embedded metadata:**
+- Automatically created during LoRA training with kohya_ss or other trainers
+- No additional tools required
+
 ## Troubleshooting
 
 ### Cannot retrieve trigger words
 
+**For external metadata files:**
 - Check if metadata file exists (`.metadata.json` or `.info`)
 - Verify JSON contains `civitai.trainedWords` or `civitai.images`
 - Confirm filename matches `{LoRAfilename}.metadata.json` or `{LoRAfilename}.info`
+
+**For embedded metadata:**
+- Set `trigger_word_source` to `metadata` to read directly from LoRA file
+- Check if LoRA was trained with metadata (most modern LoRAs include this)
+- Supported fields: `ss_tag_frequency`, `modelspec.trigger_word`, `ss_output_name`
+
 
 ### additional_prompt with LoRA syntax doesn't work
 

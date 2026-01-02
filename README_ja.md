@@ -9,14 +9,16 @@ ComfyUIでLoRAをランダムに選択・適用するカスタムノードです
 ## 主な機能
 
 - **3グループ対応**: 最大3つの異なるフォルダからLoRAを選択可能
-- **外部メタデータ読み取り**: メタデータファイルからトリガーワードと作例プロンプトを自動取得
-  - `.metadata.json`形式（ComfyUI Lora Manager）- 優先度1
-  - `.info`形式（Civitai Helper）- 優先度2
+- **マルチソースメタデータ読み取り**: 優先順位に従ってトリガーワードと作例プロンプトを自動取得
+  1. `.metadata.json`形式（ComfyUI Lora Manager）- 優先度1
+  2. `.info`形式（Civitai Helper）- 優先度2
+  3. **LoRA本体ファイルの埋め込みメタデータ** - 優先度3（新機能）
 - **強度ランダム化**: 範囲指定で強度をランダムに変化（例: `0.4-0.8`）
 - **柔軟なトリガーワード取得**:
   - `json_combined`: 全トリガーワードパターンを結合（重複除去）
   - `json_random`: ランダムに1パターン選択
   - `json_sample_prompt`: 作例プロンプトをランダムに取得
+  - **`metadata`**: 埋め込みメタデータから直接読み込み（新機能）
 - **作例プロンプトの最適化**: 作例内のLoRA記述を自動削除し、ノード設定の強度を適用
 - **2つのテキスト出力**: positive_textとnegative_textを個別に出力
 - **ComfyUI標準のseed制御**: fixed/randomize/increment/decrementに対応
@@ -312,6 +314,30 @@ positive_text: 1girl, beautiful (LoRA記述削除済み)
 negative_text: bad quality, worst quality
 ```
 
+### metadata（埋め込みメタデータのみ - 新機能）
+
+外部の`.metadata.json`や`.info`ファイルを無視して、**LoRA本体ファイルの埋め込みメタデータから直接**トリガーワードを読み込みます。
+
+**対応メタデータフィールド:**
+- `ss_tag_frequency`: kohya_ss形式のタグ頻度（上位20個を抽出）
+- `modelspec.trigger_word`: トリガーワード
+- `ss_output_name`: モデル名
+
+**使用例:**
+- LoRA作成者が埋め込んだメタデータのみを使用したい場合
+- 外部JSONファイルに誤った情報が含まれている場合
+- 外部メタデータファイルがないLoRAを使用する場合
+
+**例:**
+```
+LoRAファイルに埋め込まれたメタデータ:
+  ss_tag_frequency: {"dataset1": {"alice": 150, "blonde": 120, ...}}
+  ↓
+出力: alice, blonde, blue_eyes, ...
+```
+
+**注意:** 他のモード（`json_combined`、`json_random`、`json_sample_prompt`）は外部ファイルを優先し、見つからない場合のみ埋め込みメタデータにフォールバックします。
+
 ## 出力
 
 | 出力名 | 型 | 説明 |
@@ -333,9 +359,15 @@ negative_text: bad quality, worst quality
 
 ## 必要なファイル構成
 
-LoRAファイルと同じフォルダにメタデータファイルが必要です。
+**トリガーワード取得のため、メタデータファイルまたは埋め込みデータが必要です。**
 
-対応形式（優先順位順）:
+### 優先順位
+
+ノードは以下の優先順位でメタデータを読み込みます:
+
+1. **`.metadata.json`**（ComfyUI Lora Manager形式）
+2. **`.info`**（Civitai Helper形式）
+3. **LoRA本体ファイルの埋め込みメタデータ**（LoRAが学習時にメタデータを含んでいれば常に利用可能）
 
 ### 1. ComfyUI Lora Manager形式（推奨）
 
@@ -357,7 +389,17 @@ LoRAファイルと同じフォルダにメタデータファイルが必要で�
 └── character_alice.info
 ```
 
-**優先順位:** `.metadata.json`と`.info`の両方が存在する場合、`.metadata.json`が使用されます。
+### 3. 埋め込みメタデータ（外部ファイル不要）
+
+```
+/path/to/lora/
+├── style_anime_v2.safetensors  ← 埋め込みメタデータを含む
+└── character_alice.safetensors  ← 埋め込みメタデータを含む
+```
+
+**注意:**
+- 外部ファイル（`.metadata.json`または`.info`）が存在する場合、埋め込みメタデータより優先されます（`trigger_word_source: metadata`を使用する場合を除く）
+- `trigger_word_source`を`metadata`に設定すると、外部ファイルを無視して埋め込みメタデータのみを読み込みます
 
 ### メタデータファイルの生成方法
 
@@ -368,6 +410,10 @@ LoRAファイルと同じフォルダにメタデータファイルが必要で�
 **Civitai Helper:**
 - [Civitai Helper](https://github.com/butaixianran/Stable-Diffusion-Webui-Civitai-Helper)
 - `.info`ファイルを生成（こちらにも対応）
+
+**埋め込みメタデータ:**
+- kohya_ssなどのLoRA学習ツールで自動的に作成されます
+- 追加のツールは不要です
 
 ## MODEL強度とCLIP強度について
 
@@ -499,9 +545,15 @@ v1.0.0以降では自動的にLoRA構文が削除されるため、この問題�
 
 ### トリガーワードが取得できない
 
+**外部メタデータファイルの場合:**
 - メタデータファイルが存在するか確認（`.metadata.json`または`.info`）
 - JSONファイル内に`civitai.trainedWords`または`civitai.images`が存在するか確認
 - ファイル名が`{LoRAファイル名}.metadata.json`または`{LoRAファイル名}.info`と一致しているか確認
+
+**埋め込みメタデータの場合:**
+- `trigger_word_source`を`metadata`に設定してLoRAファイルから直接読み込む
+- LoRAが学習時にメタデータを含んでいるか確認（最近のLoRAはほぼ含んでいます）
+- 対応フィールド: `ss_tag_frequency`、`modelspec.trigger_word`、`ss_output_name`
 
 ### LoRAが適用されない
 

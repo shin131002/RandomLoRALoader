@@ -39,12 +39,15 @@ RandomLoRALoader - ComfyUI Custom Node V1
    - model_strength_3: MODEL適用強度
    - clip_strength_3: CLIP適用強度
    - num_loras_3: 選択するLoRA個数
-19. trigger_word_source: json_combined/json_random/json_sample_prompt（共通）
+19. trigger_word_source: json_combined/json_random/json_sample_prompt/metadata（共通）
 20. seed: ランダム選択のシード値（共通、ComfyUI標準のcontrol_before_generateで制御）
 
 【その他仕様】
-- 外部JSONファイル（{LoRAファイル名}.metadata.json）からトリガーワード/作例を取得
-- JSON読み取り優先順位: trainedWords / images[].meta.prompt
+- メタデータ読み取り優先順位:
+  1. {LoRAファイル名}.metadata.json (ComfyUI Lora Manager)
+  2. {LoRAファイル名}.info (Civitai Helper)
+  3. LoRA本体ファイルの埋め込みメタデータ
+- trigger_word_source="metadata"時は埋め込みメタデータのみを参照
 - 同じLoRAの重複選択なし（不足時は再選択で埋める）
 - json_sample_prompt選択時はpositive/negativeを分離
 - 作例プロンプト内のLoRA記述（<lora:xxx:x.x>）は削除
@@ -62,6 +65,14 @@ from pathlib import Path
 import folder_paths
 import comfy.sd
 import comfy.utils
+
+# LoRA埋め込みメタデータ読み込み用
+try:
+    from safetensors.torch import safe_open
+    SAFETENSORS_AVAILABLE = True
+except ImportError:
+    SAFETENSORS_AVAILABLE = False
+    print("[RandomLoRALoader] safetensors not available, embedded metadata reading disabled")
 
 class RandomLoRALoader:
     """ランダムLoRA選択・適用ノード（3グループ対応）"""
@@ -169,7 +180,7 @@ class RandomLoRALoader:
                 }),
                 # 共通設定
                 "trigger_word_source": (
-                    ["json_combined", "json_random", "json_sample_prompt"],
+                    ["json_combined", "json_random", "json_sample_prompt", "metadata"],
                     {
                         "default": "json_combined"
                     }
@@ -320,11 +331,12 @@ class RandomLoRALoader:
     
     def _load_json_metadata(self, lora_path):
         """
-        外部JSONファイルからメタデータを読み込む
+        外部JSONファイルまたはLoRA埋め込みメタデータを読み込む
         
         優先順位:
         1. {filename}.metadata.json (ComfyUI Lora Manager形式)
         2. {filename}.info (Civitai Helper形式)
+        3. LoRA本体ファイルの埋め込みメタデータ
         
         Args:
             lora_path: LoRAファイルパス (.safetensors)
@@ -353,9 +365,87 @@ class RandomLoRALoader:
             except Exception as e:
                 print(f"[RandomLoRALoader] JSON読み込みエラー ({json_path_info}): {e}")
         
-        # どちらも見つからない
-        print(f"[RandomLoRALoader] メタデータファイルが見つかりません: {base_name}.metadata.json または {base_name}.info")
+        # 優先順位3: LoRA本体ファイルの埋め込みメタデータ
+        embedded_data = self._load_embedded_metadata(lora_path)
+        if embedded_data:
+            return embedded_data
+        
+        # どれも見つからない
+        print(f"[RandomLoRALoader] メタデータが見つかりません: {base_name}")
         return None
+    
+    def _load_embedded_metadata(self, lora_path):
+        """
+        LoRA本体ファイルの埋め込みメタデータを読み込む
+        
+        Args:
+            lora_path: LoRAファイルパス (.safetensors)
+        
+        Returns:
+            dict: メタデータ（読み込み失敗時はNone）
+        """
+        if not SAFETENSORS_AVAILABLE:
+            return None
+        
+        if not os.path.exists(lora_path):
+            return None
+        
+        try:
+            with safe_open(lora_path, framework="pt", device="cpu") as f:
+                metadata = f.metadata()
+                
+                if not metadata:
+                    return None
+                
+                # ss_tag_frequency（kohya_ss形式）からトリガーワード抽出
+                if "ss_tag_frequency" in metadata:
+                    tag_freq_str = metadata.get("ss_tag_frequency", "{}")
+                    try:
+                        tag_freq = json.loads(tag_freq_str)
+                        # 最も頻度の高いタグセットを取得
+                        if tag_freq:
+                            # 各データセットのタグを結合
+                            all_tags = []
+                            for dataset_tags in tag_freq.values():
+                                all_tags.extend(dataset_tags.keys())
+                            
+                            # 重複除去
+                            unique_tags = list(dict.fromkeys(all_tags))
+                            
+                            # Civitai形式に変換
+                            trigger_words = ", ".join(unique_tags[:20])  # 上位20個
+                            
+                            return {
+                                "civitai": {
+                                    "trainedWords": [trigger_words]
+                                }
+                            }
+                    except json.JSONDecodeError:
+                        pass
+                
+                # その他のメタデータフィールドからトリガーワード抽出
+                if "modelspec.trigger_word" in metadata:
+                    trigger = metadata["modelspec.trigger_word"]
+                    return {
+                        "civitai": {
+                            "trainedWords": [trigger]
+                        }
+                    }
+                
+                # ss_output_name（モデル名）
+                if "ss_output_name" in metadata:
+                    output_name = metadata["ss_output_name"]
+                    return {
+                        "civitai": {
+                            "trainedWords": [output_name]
+                        }
+                    }
+                
+                return None
+                
+        except Exception as e:
+            print(f"[RandomLoRALoader] 埋め込みメタデータ読み込みエラー ({lora_path}): {e}")
+            return None
     
     def _get_trigger_words_combined(self, lora_path):
         """
@@ -476,6 +566,29 @@ class RandomLoRALoader:
         negative = re.sub(r'\s+', ' ', negative).strip()
         
         return positive, negative
+    
+    def _get_trigger_words_from_embedded(self, lora_path):
+        """
+        LoRA埋め込みメタデータから直接トリガーワードを取得
+        外部JSONファイルを無視して、LoRA本体ファイルのみを参照
+        
+        Args:
+            lora_path: LoRAファイルパス
+        
+        Returns:
+            str: トリガーワード
+        """
+        embedded_data = self._load_embedded_metadata(lora_path)
+        if not embedded_data:
+            return ""
+        
+        # civitai.trainedWordsを取得（_load_embedded_metadataで変換済み）
+        trained_words = embedded_data.get("civitai", {}).get("trainedWords", [])
+        if not trained_words:
+            return ""
+        
+        # 最初のパターンを使用（埋め込みデータは通常1つ）
+        return trained_words[0] if trained_words else ""
     
     def _load_lora(self, model, clip, lora_path, model_strength, clip_strength):
         """
@@ -715,6 +828,11 @@ class RandomLoRALoader:
                     all_positive_parts.append(positive_prompt)
                     all_negative_parts.append(negative_prompt)
                     trigger_display = positive_prompt
+                
+                elif trigger_word_source == "metadata":
+                    trigger_words = self._get_trigger_words_from_embedded(lora_path)
+                    all_positive_parts.append(trigger_words)
+                    trigger_display = trigger_words
                 
                 # テキスト出力に追加（末尾にカンマを付ける）
                 lora_notation = f"<lora:{lora_name}:{actual_model_str}:{actual_clip_str}>"
