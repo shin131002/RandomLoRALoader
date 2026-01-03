@@ -622,6 +622,44 @@ MIT License
 - Wildcard Encode (Inspire)との連携対応
 - 完全ローカル動作（API不要）
 
+## Tips & Tricks
+
+### LoRA構文フィルタとしての使用
+
+LoRAを適用せず、単純にLoRA構文削除フィルタとしてこのノードを使用できます。
+
+**設定:**
+- 全グループの`num_loras`を`0`に設定（または全フォルダパスを空にする）
+- Wildcard Encodeの`populated_text`を`additional_prompt`に接続
+- `positive_text`出力を次のノードに接続
+
+**使用例:**
+- Wildcard Encode出力からLoRA構文を削除
+- 他のノードに渡す前にプロンプトをクリーンアップ
+- Wildcard EncodeのLoRA処理を使いつつ、互換性のために構文を削除
+
+**ワークフロー例:**
+```
+[Wildcard Encode (Inspire)]
+  text: "__style__, {red|blue|green}, <lora:base_effect:0.5>"
+  ↓
+  populated_text: "anime style, blue, <lora:base_effect:0.5>"
+  (LoRAはWildcard EncodeによりMODELに適用済み)
+  ↓
+[Random LoRA Loader]
+  num_loras: 0, 0, 0  ← LoRA適用なし
+  additional_prompt ← populated_textから接続
+  ↓
+  positive_text: "anime style, blue,"  ← LoRA構文削除済み ✅
+  ↓
+[次のノード]
+```
+
+**メリット:**
+- ✅ `<lora:ファイル名:強度>`構文がノイズトークンになるのを防止
+- ✅ 別途テキスト処理ノードが不要
+- ✅ LoRA構文を含むあらゆるテキストに対応
+
 ## 免責事項・サポートポリシー
 
 ### 本ノードについて

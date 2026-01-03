@@ -553,6 +553,44 @@ v1.0.0 and later automatically suppress these warning messages. If still display
 2. Restart ComfyUI
 3. If still appears and functionality is fine, safe to ignore
 
+## Tips & Tricks
+
+### Using as a LoRA Syntax Filter Only
+
+You can use this node as a simple LoRA syntax remover without applying any LoRAs.
+
+**Setup:**
+- Set all `num_loras` to `0` (or leave all folder paths empty)
+- Connect Wildcard Encode's `populated_text` to `additional_prompt`
+- Connect `positive_text` output to next node
+
+**Use case:**
+- Remove LoRA syntax from Wildcard Encode output
+- Clean up prompts before passing to other nodes
+- Use Wildcard Encode's LoRA processing while removing the syntax for compatibility
+
+**Example workflow:**
+```
+[Wildcard Encode (Inspire)]
+  text: "__style__, {red|blue|green}, <lora:base_effect:0.5>"
+  ↓
+  populated_text: "anime style, blue, <lora:base_effect:0.5>"
+  (LoRA already applied to MODEL by Wildcard Encode)
+  ↓
+[Random LoRA Loader]
+  num_loras: 0, 0, 0  ← No LoRA application
+  additional_prompt ← Connected from populated_text
+  ↓
+  positive_text: "anime style, blue,"  ← LoRA syntax removed ✅
+  ↓
+[Next Node]
+```
+
+**Benefits:**
+- ✅ Removes `<lora:filename:strength>` syntax that can become noise tokens
+- ✅ No need for separate text processing nodes
+- ✅ Works with any text containing LoRA syntax
+
 ## Disclaimer and Support Policy
 
 ### About This Node
