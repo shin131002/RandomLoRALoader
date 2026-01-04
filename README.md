@@ -839,6 +839,8 @@ Randomly selects 1 LoRA containing "anime" in filename
 
 #### With Wildcard Encode
 
+![Wildcard Encode + Filtered Random LoRA Loader Workflow](./images/filterd_final_wce.webp)
+
 ```
 [Wildcard Encode]
   populated_text: "1girl, beautiful"

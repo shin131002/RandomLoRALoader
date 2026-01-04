@@ -908,6 +908,8 @@ unique_by_filename: False
 
 #### Wildcard Encodeとの連携
 
+![WildcardEncode + FilteredRandomLoRALoder ワークフロー](./images/filterd_final_wce.webp)
+
 ```
 [Wildcard Encode]
   populated_text: "1girl, beautiful"
