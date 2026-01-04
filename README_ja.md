@@ -2,11 +2,39 @@
 
 **[English README](./README.md) | 日本語版**
 
-ComfyUIでLoRAをランダムに選択・適用するカスタムノードです。複数のフォルダから異なる種類のLoRA（スタイル、キャラクター、コンセプトなど）を組み合わせて使用できます。
+ComfyUIでLoRAをランダムに選択・適用するカスタムノードパッケージです。2つのノードを含みます:
 
-![ワークフロー例](./images/workflow.webp)
+1. **Random LoRA Loader** - 3フォルダから同時選択
+2. **Filtered Random LoRA Loader** - 1フォルダ + キーワードフィルタ（新機能 v1.1.0）
 
-## 主な機能
+![RandomLoRAloderワークフロー例](./images/RLL_final_single.webp)
+![FilteredRandomLoRAloderワークフロー例](./images/filterd_final_single.webp)
+---
+
+## ノード概要
+
+### Random LoRA Loader（オリジナル）
+
+最大3つの異なるフォルダからLoRAを選択。フォルダベースの整理に最適。
+
+**用途:**
+- スタイル、キャラクター、コンセプトを別フォルダで管理
+- 固定的なLoRAカテゴリ
+- シンプルなフォルダベースのワークフロー
+
+### Filtered Random LoRA Loader（新機能）
+
+1つのフォルダからキーワードフィルタで選択。動的な選択と大規模コレクションに最適。
+
+**用途:**
+- 全LoRAを1フォルダで管理、キーワードで絞り込み
+- AND/OR条件での動的フィルタリング
+- メタデータ検索機能
+- 複数インスタンスの直列接続を推奨
+
+---
+
+## 主な機能（両ノード共通）
 
 - **3グループ対応**: 最大3つの異なるフォルダからLoRAを選択可能
 - **マルチソースメタデータ読み取り**: 優先順位に従ってトリガーワードと作例プロンプトを自動取得
@@ -65,7 +93,7 @@ ComfyUIを再起動してください。
 
 このノードはWildcard Encode (Inspire)と組み合わせることで、wildcardによる動的プロンプト生成とランダムLoRA選択の両方を実現できます。
 
-![Wildcard Encodeワークフロー](./images/wildcard_workflow.webp)
+![Wildcard Encode+RandomLoRALoderワークフロー](./images/RLL_final_wce.webp)
 
 #### 推奨接続例
 
@@ -623,6 +651,279 @@ MIT License
 - 完全ローカル動作（API不要）
 
 ## Tips & Tricks
+
+### Random LoRA Loader: LoRA構文フィルタとしての使用
+
+LoRAを適用せず、単純にLoRA構文削除フィルタとしてこのノードを使用できます。
+
+**設定:**
+- 全グループの`num_loras`を`0`に設定（または全フォルダパスを空にする）
+- Wildcard Encodeの`populated_text`を`additional_prompt`に接続
+- `positive_text`出力を次のノードに接続
+
+**使用例:**
+- Wildcard Encode出力からLoRA構文を削除
+- 他のノードに渡す前にプロンプトをクリーンアップ
+- Wildcard EncodeのLoRA処理を使いつつ、互換性のために構文を削除
+
+**ワークフロー例:**
+```
+[Wildcard Encode (Inspire)]
+  text: "__style__, {red|blue|green}, <lora:base_effect:0.5>"
+  ↓
+  populated_text: "anime style, blue, <lora:base_effect:0.5>"
+  (LoRAはWildcard EncodeによりMODELに適用済み)
+  ↓
+[Random LoRA Loader]
+  num_loras: 0, 0, 0  ← LoRA適用なし
+  additional_prompt ← populated_textから接続
+  ↓
+  positive_text: "anime style, blue,"  ← LoRA構文削除済み ✅
+  ↓
+[次のノード]
+```
+
+**メリット:**
+- ✅ `<lora:ファイル名:強度>`構文がノイズトークンになるのを防止
+- ✅ 別途テキスト処理ノードが不要
+- ✅ LoRA構文を含むあらゆるテキストに対応
+
+---
+
+## Filtered Random LoRA Loader（新機能 v1.1.0）
+
+![FilteredRandomLoRALoder x1ワークフロー](./images/filterd_final_single.webp)
+
+### 概要
+
+キーワードフィルタ機能を持つ単一グループLoRAローダー。複数インスタンスの直列接続を想定した設計。
+
+**Random LoRA Loaderとの違い:**
+- フォルダパスは1つ（3つではない）
+- キーワードフィルタリング（AND/ORモード）
+- メタデータ検索機能（キャッシュ付き）
+- プロンプト入力が2つ（positive/negative）
+- 直列接続を推奨
+
+### パラメータ
+
+#### 共通設定
+- `token_normalization` - Random LoRA Loaderと同じ
+- `weight_interpretation` - Random LoRA Loaderと同じ
+
+#### フォルダ設定
+- `lora_folder_path` - フォルダパス（1つ）
+- `include_subfolders` - サブフォルダを含む（デフォルト: True）
+
+#### キーワードフィルタ
+- `keyword_filter` - キーワード（カンマ区切り、例: "style, anime"）
+- `filter_mode` - AND（全キーワード）or OR（いずれか、デフォルト: AND）
+- `search_in_metadata` - メタデータ内を検索（デフォルト: False - ファイル名のみ）
+
+#### LoRA設定
+- `model_strength` - MODEL強度（例: "1.0" or "0.6-0.9"）
+- `clip_strength` - CLIP強度（例: "1.0" or "0.6-0.9"）
+- `num_loras` - 選択するLoRA個数（デフォルト: 1、範囲: 0-20）
+
+#### トリガーワード設定
+- `trigger_word_source` - Random LoRA Loaderと同じ
+
+#### 追加プロンプト
+- `additional_prompt_positive` - 追加ポジティブプロンプト（入力接続 or 直接記述）
+
+#### seed
+- `seed` - ランダムシード
+- `control_after_generate` - seed制御モード
+
+### キーワードフィルタリング
+
+#### ファイル名検索（デフォルト - 高速）
+
+LoRAファイル名のみを検索。
+
+**例:**
+```
+フォルダ内容:
+  - style_anime_v1.safetensors
+  - style_realistic.safetensors
+  - character_alice.safetensors
+
+keyword_filter: "anime"
+→ マッチ: style_anime_v1.safetensors ✅
+```
+
+#### メタデータ検索（オプション - 低速）
+
+ファイル名とメタデータの両方を検索:
+- `model_name`
+- `civitai.name`
+- `civitai.trainedWords`
+- `civitai.model.name`
+- `civitai.model.tags`
+- `tags`
+- 埋め込みメタデータ
+
+**パフォーマンスについて:**
+
+初回読み込み時間（SSD環境、進捗表示あり）:
+- 100個: 瞬時
+- 1,000個: 約2秒
+- 5,000個: 約10秒
+- 10,000個: 約20秒
+- 20,000個: 約40秒
+- 50,000個: 約100秒（1分40秒）
+
+メモリ使用量:
+- 10,000個: 約150MB
+- 20,000個: 約300MB
+- 50,000個: 約750MB
+
+**2回目以降:** 瞬時（キャッシュ利用）
+
+**推奨:**
+- デフォルトのファイル名検索は常に高速
+- メタデータ検索は必要時のみ有効化
+- 大量のLoRA（5,000個以上）の場合、初回は時間がかかります
+- HDD環境では初回読み込みがSSDの約3倍の時間がかかります
+
+**例:**
+```
+ファイル: abc123.safetensors
+メタデータ: {"trainedWords": ["anime style", "vibrant colors"]}
+
+search_in_metadata: True
+keyword_filter: "anime"
+→ マッチ ✅
+```
+
+#### ANDモード vs ORモード
+
+**ANDモード（デフォルト）:**
+```
+keyword_filter: "style, anime"
+filter_mode: "AND"
+→ "style" AND "anime" の両方を含むファイルにマッチ
+```
+
+**ORモード:**
+```
+keyword_filter: "style, anime"
+filter_mode: "OR"
+→ "style" OR "anime" のいずれかを含むファイルにマッチ
+```
+
+### メタデータ検索のパフォーマンス
+
+**ファイル名検索（デフォルト）:**
+- `search_in_metadata: False`（デフォルト）
+- 10,000個以上のLoRAでも高速
+- 処理時間: <100ms
+
+**メタデータ検索:**
+- `search_in_metadata: True`
+- ファイル名とLoRAメタデータの両方を検索
+- **初回実行:** キャッシュ構築
+  - 1,000個のLoRA: 約2秒
+  - 10,000個のLoRA: 約7-75秒（メタデータファイルの有無による）
+  - コンソールに進捗表示
+- **2回目以降:** 超高速（<100ms）
+- キャッシュはComfyUI再起動までl持続
+
+**パフォーマンスのヒント:**
+- 初回に`include_subfolders: True`で実行すると全LoRAをキャッシュ構築
+- キャッシュ構築後は`include_subfolders: False`でもキャッシュ利用可能
+- キャッシュは全ノードインスタンスで共有
+
+### 使用例
+
+#### 基本的な使い方
+
+```
+[Filtered Random LoRA Loader]
+  lora_folder_path: /loras/all/
+  keyword_filter: "anime"
+  num_loras: 1
+  ↓
+ファイル名に "anime" を含むLoRAから1個ランダム選択
+```
+
+#### 複数インスタンスの直列接続
+
+![FilteredRandomLoRALoder x2ワークフロー](./images/filterd_final_double.webp)
+
+```
+[Filtered Random LoRA Loader A]
+  folder: /loras/all/
+  keyword_filter: "style, anime"
+  filter_mode: "AND"
+  num_loras: 1
+  ↓
+[Filtered Random LoRA Loader B]
+  folder: /loras/all/
+  keyword_filter: "character"
+  num_loras: 1
+  additional_prompt_positive ← Aのpositive_text
+  additional_prompt_negative ← Aのnegative_text
+  ↓
+[Filtered Random LoRA Loader C]
+  folder: /loras/all/
+  keyword_filter: "concept"
+  num_loras: 1
+  additional_prompt_positive ← Bのpositive_text
+  additional_prompt_negative ← Bのnegative_text
+```
+
+#### Wildcard Encodeとの連携
+
+![Wildcard Encode+FilteredRandomLoRALoderワークフロー](./images/filterd_final_wce.webp)
+
+```
+[Wildcard Encode]
+  populated_text: "1girl, beautiful"
+  negative_text: "bad quality"
+  ↓
+[Filtered Random LoRA Loader]
+  additional_prompt_positive ← populated_text
+  additional_prompt_negative ← negative_text
+  keyword_filter: "style"
+  ↓
+結合された出力 ✅
+```
+
+### ベストプラクティス
+
+1. **説明的なファイル名を使用:** `style_anime_v1.safetensors`
+2. **デフォルトモード（高速）:** 通常は`search_in_metadata: False`のまま使用
+3. **メタデータ検索を有効化するタイミング:**
+   - ファイル名に有用なキーワードが含まれていない
+   - トリガーワードやタグで検索したい
+4. **初回実行の最適化:**
+   - `include_subfolders: True`で1回実行して完全なキャッシュ構築
+   - その後`False`に切り替えてフォルダスキャンを高速化
+5. **直列接続:**
+   - `positive_text` → 次のノードの`additional_prompt_positive`に接続
+   - `negative_text` → 次のノードの`additional_prompt_negative`に接続
+
+### トラブルシューティング
+
+**フィルタに一致するLoRAが見つからない:**
+- キーワードがファイル名に含まれているか確認
+- `search_in_metadata: True`でメタデータ内も検索
+- ANDモードの代わりにORモードを試す
+- フォルダパスが正しいか確認
+
+**初回実行が遅い:**
+- `search_in_metadata: True`の場合は正常
+- キャッシュ構築中、2回目以降は高速
+- コンソールに進捗表示
+
+**キャッシュが機能しない:**
+- ComfyUI再起動でキャッシュクリア
+- 起動後1回実行してキャッシュ再構築
+
+---
+
+## Tips & Tricks（オリジナルノード）
 
 ### LoRA構文フィルタとしての使用
 

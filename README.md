@@ -2,11 +2,39 @@
 
 **English | [日本語版 README](./README_ja.md)**
 
-A ComfyUI custom node for randomly selecting and applying LoRAs from multiple folders. You can combine different types of LoRAs (styles, characters, concepts, etc.) from separate folders.
+A ComfyUI custom node package for randomly selecting and applying LoRAs. Includes two nodes:
+
+1. **Random LoRA Loader** - Select from 3 folders simultaneously
+2. **Filtered Random LoRA Loader** - Single folder with keyword filtering (NEW v1.1.0)
 
 ![Workflow Example](./images/workflow.webp)
 
-## Key Features
+---
+
+## Nodes Overview
+
+### Random LoRA Loader (Original)
+
+Select LoRAs from up to 3 different folders. Ideal for folder-based organization.
+
+**Use case:**
+- Different folders for styles, characters, concepts
+- Fixed LoRA categories
+- Simple folder-based workflow
+
+### Filtered Random LoRA Loader (NEW)
+
+Select LoRAs from a single folder using keyword filtering. Ideal for dynamic selection and large collections.
+
+**Use case:**
+- All LoRAs in one folder, filter by keywords
+- Dynamic filtering with AND/OR conditions
+- Metadata search capability
+- Recommended for chaining multiple instances
+
+---
+
+## Key Features (Both Nodes)
 
 - **3-Group Support**: Select LoRAs from up to 3 different folders
 - **Multi-Source Metadata Reading**: Automatically retrieve trigger words and sample prompts with priority order:
@@ -554,6 +582,274 @@ v1.0.0 and later automatically suppress these warning messages. If still display
 3. If still appears and functionality is fine, safe to ignore
 
 ## Tips & Tricks
+
+### Random LoRA Loader: Using as a LoRA Syntax Filter Only
+
+You can use this node as a simple LoRA syntax remover without applying any LoRAs.
+
+**Setup:**
+- Set all `num_loras` to `0` (or leave all folder paths empty)
+- Connect Wildcard Encode's `populated_text` to `additional_prompt`
+- Connect `positive_text` output to next node
+
+**Use case:**
+- Remove LoRA syntax from Wildcard Encode output
+- Clean up prompts before passing to other nodes
+- Use Wildcard Encode's LoRA processing while removing the syntax for compatibility
+
+**Example workflow:**
+```
+[Wildcard Encode (Inspire)]
+  text: "__style__, {red|blue|green}, <lora:base_effect:0.5>"
+  ↓
+  populated_text: "anime style, blue, <lora:base_effect:0.5>"
+  (LoRA already applied to MODEL by Wildcard Encode)
+  ↓
+[Random LoRA Loader]
+  num_loras: 0, 0, 0  ← No LoRA application
+  additional_prompt ← Connected from populated_text
+  ↓
+  positive_text: "anime style, blue,"  ← LoRA syntax removed ✅
+  ↓
+[Next Node]
+```
+
+**Benefits:**
+- ✅ Removes `<lora:filename:strength>` syntax that can become noise tokens
+- ✅ No need for separate text processing nodes
+- ✅ Works with any text containing LoRA syntax
+
+---
+
+## Filtered Random LoRA Loader (NEW v1.1.0)
+
+### Overview
+
+A single-group LoRA loader with keyword filtering capabilities. Designed for chaining multiple instances together.
+
+**Key differences from Random LoRA Loader:**
+- Single folder path (not 3)
+- Keyword filtering with AND/OR modes
+- Metadata search capability with caching
+- Dual prompt inputs (positive and negative)
+- Recommended for serial connection
+
+### Parameters
+
+#### Common Settings
+- `token_normalization` - Same as Random LoRA Loader
+- `weight_interpretation` - Same as Random LoRA Loader
+
+#### Folder Settings
+- `lora_folder_path` - Single folder path
+- `include_subfolders` - Include subfolders (default: True)
+
+#### Keyword Filter
+- `keyword_filter` - Keywords (comma-separated, e.g., "style, anime")
+- `filter_mode` - AND (all keywords) or OR (any keyword, default: AND)
+- `search_in_metadata` - Search in metadata files (default: False - filename only)
+
+#### LoRA Settings
+- `model_strength` - MODEL strength (e.g., "1.0" or "0.6-0.9")
+- `clip_strength` - CLIP strength (e.g., "1.0" or "0.6-0.9")
+- `num_loras` - Number of LoRAs to select (default: 1, range: 0-20)
+
+#### Trigger Word Settings
+- `trigger_word_source` - Same as Random LoRA Loader
+
+#### Additional Prompts
+- `additional_prompt_positive` - Additional positive prompt (input or direct entry)
+- `additional_prompt_negative` - Additional negative prompt (input or direct entry)
+
+#### Seed
+- `seed` - Random seed
+- `control_after_generate` - Seed control mode
+
+### Keyword Filtering
+
+#### Filename Search (Default - Fast)
+
+Searches only in LoRA filename.
+
+**Example:**
+```
+Folder contents:
+  - style_anime_v1.safetensors
+  - style_realistic.safetensors
+  - character_alice.safetensors
+
+keyword_filter: "anime"
+→ Matches: style_anime_v1.safetensors ✅
+```
+
+#### Metadata Search (Optional - Slower)
+
+Searches in both filename and metadata fields:
+- `model_name`
+- `civitai.name`
+- `civitai.trainedWords`
+- `civitai.model.name`
+- `civitai.model.tags`
+- `tags`
+- Embedded metadata
+
+**Performance Notes:**
+
+Initial loading time (SSD environment, with progress display):
+- 100 files: Instant
+- 1,000 files: ~2 seconds
+- 5,000 files: ~10 seconds
+- 10,000 files: ~20 seconds
+- 20,000 files: ~40 seconds
+- 50,000 files: ~100 seconds (1 min 40 sec)
+
+Memory usage:
+- 10,000 files: ~150MB
+- 20,000 files: ~300MB
+- 50,000 files: ~750MB
+
+**Second time onward:** Instant (cached)
+
+**Recommendations:**
+- Default filename search is always fast
+- Enable metadata search only when needed
+- For large collections (5,000+ files), initial loading will take time
+- HDD environments take approximately 3x longer than SSD for initial loading
+
+**Example:**
+```
+File: abc123.safetensors
+Metadata: {"trainedWords": ["anime style", "vibrant colors"]}
+
+search_in_metadata: True
+keyword_filter: "anime"
+→ Matches ✅
+```
+
+#### AND vs OR Modes
+
+**AND Mode (default):**
+```
+keyword_filter: "style, anime"
+filter_mode: "AND"
+→ Matches files containing BOTH "style" AND "anime"
+```
+
+**OR Mode:**
+```
+keyword_filter: "style, anime"
+filter_mode: "OR"
+→ Matches files containing EITHER "style" OR "anime"
+```
+
+### Metadata Search Performance
+
+**Filename search (Default):**
+- `search_in_metadata: False` (default)
+- Very fast even with 10,000+ LoRAs
+- Processing time: <100ms
+
+**Metadata search:**
+- `search_in_metadata: True`
+- Searches in both filename and LoRA metadata
+- **First execution:** Builds cache
+  - 1,000 LoRAs: ~2 seconds
+  - 10,000 LoRAs: ~7-75 seconds (depends on metadata files)
+  - Progress displayed in console
+- **Subsequent executions:** Very fast (<100ms)
+- Cache persists until ComfyUI restart
+
+**Performance tip:**
+- Use `include_subfolders: True` on first run to cache all LoRAs at once
+- After cache is built, `include_subfolders: False` will still use cached metadata
+- Cache is shared across all node instances
+
+### Usage Examples
+
+#### Basic Usage
+
+```
+[Filtered Random LoRA Loader]
+  lora_folder_path: /loras/all/
+  keyword_filter: "anime"
+  num_loras: 1
+  ↓
+Randomly selects 1 LoRA containing "anime" in filename
+```
+
+#### Chaining Multiple Instances
+
+```
+[Filtered Random LoRA Loader A]
+  folder: /loras/all/
+  keyword_filter: "style, anime"
+  filter_mode: "AND"
+  num_loras: 1
+  ↓
+[Filtered Random LoRA Loader B]
+  folder: /loras/all/
+  keyword_filter: "character"
+  num_loras: 1
+  additional_prompt_positive ← A's positive_text
+  additional_prompt_negative ← A's negative_text
+  ↓
+[Filtered Random LoRA Loader C]
+  folder: /loras/all/
+  keyword_filter: "concept"
+  num_loras: 1
+  additional_prompt_positive ← B's positive_text
+  additional_prompt_negative ← B's negative_text
+```
+
+#### With Wildcard Encode
+
+```
+[Wildcard Encode]
+  populated_text: "1girl, beautiful"
+  negative_text: "bad quality"
+  ↓
+[Filtered Random LoRA Loader]
+  additional_prompt_positive ← populated_text
+  additional_prompt_negative ← negative_text
+  keyword_filter: "style"
+  ↓
+Combined output ✅
+```
+
+### Best Practices
+
+1. **Use descriptive filenames:** `style_anime_v1.safetensors`
+2. **Default mode (fast):** Keep `search_in_metadata: False` for daily use
+3. **Enable metadata search when:**
+   - Filenames don't contain useful keywords
+   - Need to search in trigger words or tags
+4. **First run optimization:**
+   - Use `include_subfolders: True` once to build complete cache
+   - Switch to `False` after for faster folder scanning
+5. **Chaining:**
+   - Connect `positive_text` → next node's `additional_prompt_positive`
+   - Connect `negative_text` → next node's `additional_prompt_negative`
+
+### Troubleshooting
+
+**No LoRAs found matching filter:**
+- Check if keyword exists in filenames
+- Enable `search_in_metadata: True` to search in metadata
+- Try OR mode instead of AND mode
+- Verify folder path is correct
+
+**First execution is slow:**
+- This is normal when `search_in_metadata: True`
+- Cache is being built, subsequent executions will be fast
+- Progress is shown in console
+
+**Cache not working:**
+- Cache clears on ComfyUI restart
+- Run once after startup to rebuild cache
+
+---
+
+## Tips & Tricks (Original Node)
 
 ### Using as a LoRA Syntax Filter Only
 

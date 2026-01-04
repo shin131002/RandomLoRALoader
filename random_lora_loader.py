@@ -95,10 +95,15 @@ class RandomLoRALoader:
                         "default": "A1111"
                     }
                 ),
-                "additional_prompt": ("STRING", {
+                "additional_prompt_positive": ("STRING", {
                     "default": "",
                     "multiline": True,
-                    "placeholder": "Additional prompt (e.g., 1girl, beautiful)"
+                    "placeholder": "Additional positive prompt"
+                }),
+                "additional_prompt_negative": ("STRING", {
+                    "default": "",
+                    "multiline": True,
+                    "placeholder": "Additional negative prompt"
                 }),
                 # グループ1
                 "lora_folder_path_1": ("STRING", {
@@ -108,6 +113,10 @@ class RandomLoRALoader:
                 }),
                 "include_subfolders_1": ("BOOLEAN", {
                     "default": True
+                }),
+                "unique_by_filename_1": ("BOOLEAN", {
+                    "default": True,
+                    "label": "Unique by filename (exclude duplicates)"
                 }),
                 "model_strength_1": ("STRING", {
                     "default": "1.0",
@@ -135,6 +144,10 @@ class RandomLoRALoader:
                 "include_subfolders_2": ("BOOLEAN", {
                     "default": True
                 }),
+                "unique_by_filename_2": ("BOOLEAN", {
+                    "default": True,
+                    "label": "Unique by filename (exclude duplicates)"
+                }),
                 "model_strength_2": ("STRING", {
                     "default": "1.0",
                     "multiline": False,
@@ -160,6 +173,10 @@ class RandomLoRALoader:
                 }),
                 "include_subfolders_3": ("BOOLEAN", {
                     "default": True
+                }),
+                "unique_by_filename_3": ("BOOLEAN", {
+                    "default": True,
+                    "label": "Unique by filename (exclude duplicates)"
                 }),
                 "model_strength_3": ("STRING", {
                     "default": "1.0",
@@ -195,8 +212,8 @@ class RandomLoRALoader:
             }
         }
     
-    RETURN_TYPES = ("MODEL", "CLIP", "STRING", "STRING", "CONDITIONING", "CONDITIONING")
-    RETURN_NAMES = ("MODEL", "CLIP", "positive_text", "negative_text", "positive", "negative")
+    RETURN_TYPES = ("MODEL", "CLIP", "STRING", "STRING", "CONDITIONING", "CONDITIONING", "IMAGE")
+    RETURN_NAMES = ("MODEL", "CLIP", "positive_text", "negative_text", "positive", "negative", "preview")
     FUNCTION = "load_random_loras"
     CATEGORY = "loaders"
     
@@ -256,6 +273,34 @@ class RandomLoRALoader:
             # 最終的にシャッフル
             random.shuffle(selected)
             return selected
+    
+    def _unique_by_filename(self, lora_files, group_name=""):
+        """
+        ファイル名でユニーク化（重複ファイル名を除外）
+        
+        Args:
+            lora_files: LoRAファイルパスのリスト
+            group_name: グループ名（ログ用）
+        
+        Returns:
+            list: ファイル名がユニークなファイルパスのリスト
+        """
+        seen_names = {}
+        unique_files = []
+        
+        for file_path in lora_files:
+            filename = os.path.basename(file_path)
+            
+            if filename not in seen_names:
+                seen_names[filename] = file_path
+                unique_files.append(file_path)
+            else:
+                # 重複検出時はログ出力
+                print(f"[RandomLoRALoader] {group_name}: Duplicate filename detected: {filename}")
+                print(f"  Keeping: {seen_names[filename]}")
+                print(f"  Skipping: {file_path}")
+        
+        return unique_files
     
     def _parse_strength(self, strength_str):
         """
@@ -697,6 +742,143 @@ class RandomLoRALoader:
         
         return text
     
+    def _load_preview_image_as_tensor(self, lora_path):
+        """
+        プレビュー画像をTensorとして読み込み（部分一致、長辺1240px）
+        
+        検索方法:
+          LoRAファイル名（拡張子除く）で始まる画像ファイルを検索
+          例: style_anime_v1.safetensors
+            → style_anime_v1.png
+            → style_anime_v1_preview.png
+            → style_anime_v1_001.jpg
+            → STYLE_ANIME_V1.PNG (大文字小文字無視)
+        
+        リサイズ:
+          長辺を1240pxに統一（アスペクト比保持）
+          例: 1024x768 → 1240x930
+              512x512 → 1240x1240
+              800x1200 → 826x1240
+        
+        Returns:
+            torch.Tensor: (H, W, C) 形式、見つからない場合はNone
+        """
+        try:
+            from PIL import Image
+            import numpy as np
+            import torch
+        except ImportError:
+            return None
+        
+        # LoRAファイル名（拡張子なし）
+        base_name = os.path.splitext(os.path.basename(lora_path))[0]
+        folder = os.path.dirname(lora_path)
+        
+        # 画像拡張子
+        image_extensions = ('.png', '.jpg', '.jpeg', '.webp', '.gif')
+        
+        try:
+            # 同じフォルダ内のファイルを検索
+            for file in os.listdir(folder):
+                # 部分一致（大文字小文字無視）
+                if file.lower().startswith(base_name.lower()):
+                    # 画像ファイルか確認
+                    if file.lower().endswith(image_extensions):
+                        preview_path = os.path.join(folder, file)
+                        try:
+                            img = Image.open(preview_path).convert('RGB')
+                            
+                            # 長辺を1240pxにリサイズ（アスペクト比保持）
+                            width, height = img.size
+                            max_size = 1240
+                            
+                            if max(width, height) > max_size:
+                                # 長辺が1240pxを超える場合はリサイズ
+                                if width > height:
+                                    new_width = max_size
+                                    new_height = int(height * (max_size / width))
+                                else:
+                                    new_height = max_size
+                                    new_width = int(width * (max_size / height))
+                                
+                                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                            elif max(width, height) < max_size:
+                                # 長辺が1240px未満の場合は拡大
+                                if width > height:
+                                    new_width = max_size
+                                    new_height = int(height * (max_size / width))
+                                else:
+                                    new_height = max_size
+                                    new_width = int(width * (max_size / height))
+                                
+                                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                            
+                            # numpy配列に変換 (H, W, C)
+                            img_array = np.array(img).astype(np.float32) / 255.0
+                            # Tensor化
+                            return torch.from_numpy(img_array)
+                        except Exception as e:
+                            print(f"[RandomLoRALoader] Preview load error ({preview_path}): {e}")
+                            continue
+        except Exception as e:
+            print(f"[RandomLoRALoader] Folder read error: {e}")
+        
+        return None
+    
+    def _generate_preview_batch(self, preview_images):
+        """
+        プレビュー画像のバッチを生成（1240pxに統一、パディング）
+        
+        Args:
+            preview_images: list of torch.Tensor (各々 H, W, C、長辺1240px)
+        
+        Returns:
+            torch.Tensor: (B, 1240, 1240, C) 形式
+        """
+        try:
+            import torch
+            import torch.nn.functional as F
+        except ImportError:
+            return None
+        
+        if not preview_images:
+            # プレビュー画像なし → 黒画像1枚（1240x1240）
+            black_image = torch.zeros((1, 1240, 1240, 3), dtype=torch.float32)
+            return black_image
+        
+        # 全て1240x1240にパディング
+        padded_images = []
+        target_size = 1240
+        
+        for img in preview_images:
+            h, w, c = img.shape
+            
+            # パディングが必要か確認
+            if h == target_size and w == target_size:
+                padded_images.append(img)
+            else:
+                # パディング量を計算（中央配置）
+                pad_h = target_size - h
+                pad_w = target_size - w
+                pad_top = pad_h // 2
+                pad_bottom = pad_h - pad_top
+                pad_left = pad_w // 2
+                pad_right = pad_w - pad_left
+                
+                # (H, W, C) → (C, H, W) に変換してパディング
+                img_chw = img.permute(2, 0, 1)  # (C, H, W)
+                
+                # F.pad: (left, right, top, bottom)
+                padded = F.pad(img_chw, (pad_left, pad_right, pad_top, pad_bottom), value=0)
+                
+                # (C, H, W) → (H, W, C) に戻す
+                padded = padded.permute(1, 2, 0)
+                padded_images.append(padded)
+        
+        # バッチ化 (B, 1240, 1240, C)
+        preview_batch = torch.stack(padded_images, dim=0)
+        return preview_batch
+    
     def _encode_prompt(self, clip, text, token_normalization, weight_interpretation):
         """
         プロンプトをCLIPでエンコードしてCONDITIONINGを生成
@@ -734,22 +916,26 @@ class RandomLoRALoader:
         clip,
         token_normalization,
         weight_interpretation,
-        additional_prompt,
+        additional_prompt_positive,
+        additional_prompt_negative,
         # グループ1
         lora_folder_path_1,
         include_subfolders_1,
+        unique_by_filename_1,
         model_strength_1,
         clip_strength_1,
         num_loras_1,
         # グループ2
         lora_folder_path_2,
         include_subfolders_2,
+        unique_by_filename_2,
         model_strength_2,
         clip_strength_2,
         num_loras_2,
         # グループ3
         lora_folder_path_3,
         include_subfolders_3,
+        unique_by_filename_3,
         model_strength_3,
         clip_strength_3,
         num_loras_3,
@@ -773,14 +959,17 @@ class RandomLoRALoader:
         all_positive_parts = []
         all_negative_parts = []
         
+        # プレビュー画像収集
+        preview_images = []
+        
         # 3つのグループを処理
         groups = [
-            (lora_folder_path_1, include_subfolders_1, model_strength_1, clip_strength_1, num_loras_1, "Group 1"),
-            (lora_folder_path_2, include_subfolders_2, model_strength_2, clip_strength_2, num_loras_2, "Group 2"),
-            (lora_folder_path_3, include_subfolders_3, model_strength_3, clip_strength_3, num_loras_3, "Group 3"),
+            (lora_folder_path_1, include_subfolders_1, unique_by_filename_1, model_strength_1, clip_strength_1, num_loras_1, "Group 1"),
+            (lora_folder_path_2, include_subfolders_2, unique_by_filename_2, model_strength_2, clip_strength_2, num_loras_2, "Group 2"),
+            (lora_folder_path_3, include_subfolders_3, unique_by_filename_3, model_strength_3, clip_strength_3, num_loras_3, "Group 3"),
         ]
         
-        for folder_path, include_subs, model_str, clip_str, num, group_name in groups:
+        for folder_path, include_subs, unique_by_name, model_str, clip_str, num, group_name in groups:
             # フォルダパスが空、またはnum_lorasが0の場合はスキップ
             if not folder_path.strip() or num == 0:
                 print(f"[RandomLoRALoader] {group_name}: スキップ（フォルダ未指定またはnum=0）")
@@ -792,6 +981,13 @@ class RandomLoRALoader:
             if not lora_files:
                 print(f"[RandomLoRALoader] {group_name}: LoRAファイルが見つかりませんでした")
                 continue
+            
+            # ファイル名でユニーク化（重複ファイル名を除外）
+            if unique_by_name:
+                lora_files = self._unique_by_filename(lora_files, group_name)
+                if not lora_files:
+                    print(f"[RandomLoRALoader] {group_name}: ユニーク化後にファイルがありません")
+                    continue
             
             # ランダムにLoRAを選択（全グループ共通のseedを使用）
             selected_loras = self._select_random_loras(lora_files, num, seed)
@@ -837,11 +1033,16 @@ class RandomLoRALoader:
                 # テキスト出力に追加（末尾にカンマを付ける）
                 lora_notation = f"<lora:{lora_name}:{actual_model_str}:{actual_clip_str}>"
                 all_text_parts.append(f"{lora_notation}, {trigger_display},")
+                
+                # プレビュー画像を読み込み
+                preview = self._load_preview_image_as_tensor(lora_path)
+                if preview is not None:
+                    preview_images.append(preview)
         
         # テキスト出力を結合（追加プロンプトを先頭に配置、末尾にカンマを付ける）
-        if additional_prompt.strip():
+        if additional_prompt_positive.strip():
             # 追加プロンプトの末尾にカンマがなければ追加
-            additional_with_comma = additional_prompt.strip()
+            additional_with_comma = additional_prompt_positive.strip()
             if not additional_with_comma.endswith(','):
                 additional_with_comma += ','
             if all_text_parts:
@@ -849,7 +1050,7 @@ class RandomLoRALoader:
                 positive_text_output = additional_with_comma + "\n" + "\n".join(all_text_parts)
             else:
                 # LoRAがない場合: 追加プロンプトのみ（末尾カンマなし）
-                positive_text_output = additional_prompt.strip()
+                positive_text_output = additional_prompt_positive.strip()
         else:
             # 追加プロンプトなし
             if all_text_parts:
@@ -859,14 +1060,22 @@ class RandomLoRALoader:
                 # 何もない
                 positive_text_output = ""
         
-        # negativeテキスト出力（json_sample_promptの場合のみ内容あり）
-        negative_text_output = ", ".join([n for n in all_negative_parts if n])
+        # negativeテキスト出力
+        # 1. json_sample_promptからのnegative
+        sample_negative = ", ".join([n for n in all_negative_parts if n])
+        # 2. additional_prompt_negativeと結合
+        negative_parts = []
+        if additional_prompt_negative.strip():
+            negative_parts.append(additional_prompt_negative.strip())
+        if sample_negative:
+            negative_parts.append(sample_negative)
+        negative_text_output = ", ".join(negative_parts)
         
         # positiveプロンプトを結合してCONDITIONINGを生成（追加プロンプトを含める）
         final_positive_parts = []
-        if additional_prompt.strip():
+        if additional_prompt_positive.strip():
             # LoRA構文を削除してクリーンなプロンプトにする
-            cleaned_prompt = self._remove_lora_syntax(additional_prompt.strip())
+            cleaned_prompt = self._remove_lora_syntax(additional_prompt_positive.strip())
             if cleaned_prompt:  # 削除後に空でなければ追加
                 final_positive_parts.append(cleaned_prompt)
         final_positive_parts.extend([p for p in all_positive_parts if p])
@@ -876,7 +1085,13 @@ class RandomLoRALoader:
         )
         
         # negativeプロンプトを結合してCONDITIONINGを生成
-        negative_text = ", ".join([n for n in all_negative_parts if n])
+        final_negative_parts = []
+        if additional_prompt_negative.strip():
+            cleaned_negative = self._remove_lora_syntax(additional_prompt_negative.strip())
+            if cleaned_negative:
+                final_negative_parts.append(cleaned_negative)
+        final_negative_parts.extend([n for n in all_negative_parts if n])
+        negative_text = ", ".join(final_negative_parts)
         negative_conditioning = self._encode_prompt(
             clip, negative_text, token_normalization, weight_interpretation
         )
@@ -884,19 +1099,12 @@ class RandomLoRALoader:
         total_loras = len(all_text_parts)
         if total_loras > 0:
             print(f"[RandomLoRALoader] 適用完了: 合計{total_loras}個のLoRA")
-        elif additional_prompt.strip():
+        elif additional_prompt_positive.strip():
             print(f"[RandomLoRALoader] 適用完了: LoRAなし、追加プロンプトのみ使用")
         else:
             print(f"[RandomLoRALoader] 適用完了: LoRAなし、プロンプトなし")
         
-        return (model, clip, positive_text_output, negative_text_output, positive_conditioning, negative_conditioning)
-
-
-# ComfyUIへのノード登録
-NODE_CLASS_MAPPINGS = {
-    "RandomLoRALoader": RandomLoRALoader
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "RandomLoRALoader": "Random LoRA Loader"
-}
+        # プレビュー画像バッチ生成
+        preview_batch = self._generate_preview_batch(preview_images)
+        
+        return (model, clip, positive_text_output, negative_text_output, positive_conditioning, negative_conditioning, preview_batch)
