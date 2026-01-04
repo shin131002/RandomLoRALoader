@@ -7,7 +7,8 @@ A ComfyUI custom node package for randomly selecting and applying LoRAs. Include
 1. **Random LoRA Loader** - Select from 3 folders simultaneously
 2. **Filtered Random LoRA Loader** - Single folder with keyword filtering (NEW v1.1.0)
 
-![Workflow Example](./images/workflow.webp)
+![Random LoRA Loader Workflow Example](./images/RLL_final_single.webp)
+![Filtered Random LoRA Loader Workflow Example](./images/filterd_final_single.webp)
 
 ---
 
@@ -109,7 +110,7 @@ Or manually delete the RandomLoRALoader folder and restart ComfyUI.
 
 This node works seamlessly with Wildcard Encode (Inspire) for dynamic prompt generation combined with random LoRA selection.
 
-![Wildcard Encode Workflow](./images/wildcard_workflow.webp)
+![Wildcard Encode + Random LoRA Loader Workflow](./images/RLL_final_wce.webp)
 
 #### Recommended Connection
 
@@ -229,6 +230,7 @@ Each group can be configured individually:
 |---------|-------------|---------|
 | `lora_folder_path_X` | LoRA folder absolute path | (empty) |
 | `include_subfolders_X` | Include subfolders | `true` |
+| `unique_by_filename_X` | Exclude duplicate filenames | `true` |
 | `model_strength_X` | MODEL application strength | `"1.0"` |
 | `clip_strength_X` | CLIP application strength | `"1.0"` |
 | `num_loras_X` | Number of LoRAs to select | Group 1: `1`, Groups 2/3: `0` |
@@ -623,6 +625,8 @@ You can use this node as a simple LoRA syntax remover without applying any LoRAs
 
 ## Filtered Random LoRA Loader (NEW v1.1.0)
 
+![Filtered Random LoRA Loader x1 Workflow](./images/filterd_final_single.webp)
+
 ### Overview
 
 A single-group LoRA loader with keyword filtering capabilities. Designed for chaining multiple instances together.
@@ -643,6 +647,7 @@ A single-group LoRA loader with keyword filtering capabilities. Designed for cha
 #### Folder Settings
 - `lora_folder_path` - Single folder path
 - `include_subfolders` - Include subfolders (default: True)
+- `unique_by_filename` - Exclude duplicate filenames across subfolders (default: True)
 
 #### Keyword Filter
 - `keyword_filter` - Keywords (comma-separated, e.g., "style, anime")
@@ -742,6 +747,35 @@ filter_mode: "OR"
 → Matches files containing EITHER "style" OR "anime"
 ```
 
+### Handling Duplicate Filenames
+
+If the same LoRA filename exists in multiple subfolders (e.g., originals and backups), the `unique_by_filename` option prevents selecting the same LoRA multiple times.
+
+**Example:**
+```
+Folder structure:
+  /LoRA/
+    ├── style/anime_v1.safetensors
+    └── backup/anime_v1.safetensors
+
+unique_by_filename: True (default)
+  → Only one anime_v1.safetensors will be selected
+  → First occurrence is kept (/LoRA/style/anime_v1.safetensors)
+  
+unique_by_filename: False
+  → Both files can be selected
+  → May result in same LoRA applied twice with different strengths
+```
+
+**Log output when duplicates detected:**
+```
+[FilteredRandomLoRALoader] Duplicate filename detected: anime_v1.safetensors
+  Keeping: /LoRA/style/anime_v1.safetensors
+  Skipping: /LoRA/backup/anime_v1.safetensors
+```
+
+**Recommendation:** Keep default `True` to avoid unintentional duplicate applications.
+
 ### Metadata Search Performance
 
 **Filename search (Default):**
@@ -778,6 +812,8 @@ Randomly selects 1 LoRA containing "anime" in filename
 ```
 
 #### Chaining Multiple Instances
+
+![Filtered Random LoRA Loader x2 Workflow](./images/filterd_final_double.webp)
 
 ```
 [Filtered Random LoRA Loader A]

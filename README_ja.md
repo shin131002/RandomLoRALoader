@@ -9,6 +9,7 @@ ComfyUIでLoRAをランダムに選択・適用するカスタムノードパッ
 
 ![RandomLoRAloderワークフロー例](./images/RLL_final_single.webp)
 ![FilteredRandomLoRAloderワークフロー例](./images/filterd_final_single.webp)
+
 ---
 
 ## ノード概要
@@ -215,6 +216,7 @@ LoRA適用: フォルダ指定機能を使用 ✅
 |------|------|------------|
 | `lora_folder_path_X` | LoRAフォルダの絶対パス | (空) |
 | `include_subfolders_X` | サブフォルダを含めるか | `true` |
+| `unique_by_filename_X` | 重複ファイル名を除外 | `true` |
 | `model_strength_X` | MODELへの適用強度 | `"1.0"` |
 | `clip_strength_X` | CLIPへの適用強度 | `"1.0"` |
 | `num_loras_X` | 選択するLoRA個数 | グループ1: `1`, グループ2/3: `0` |
@@ -714,6 +716,7 @@ LoRAを適用せず、単純にLoRA構文削除フィルタとしてこのノー
 #### フォルダ設定
 - `lora_folder_path` - フォルダパス（1つ）
 - `include_subfolders` - サブフォルダを含む（デフォルト: True）
+- `unique_by_filename` - サブフォルダ間の重複ファイル名を除外（デフォルト: True）
 
 #### キーワードフィルタ
 - `keyword_filter` - キーワード（カンマ区切り、例: "style, anime"）
@@ -730,6 +733,7 @@ LoRAを適用せず、単純にLoRA構文削除フィルタとしてこのノー
 
 #### 追加プロンプト
 - `additional_prompt_positive` - 追加ポジティブプロンプト（入力接続 or 直接記述）
+- `additional_prompt_negative` - 追加ネガティブプロンプト（入力接続 or 直接記述）
 
 #### seed
 - `seed` - ランダムシード
@@ -812,6 +816,35 @@ filter_mode: "OR"
 → "style" OR "anime" のいずれかを含むファイルにマッチ
 ```
 
+### 重複ファイル名の処理
+
+同じLoRAファイル名が複数のサブフォルダに存在する場合（例: オリジナルとバックアップ）、`unique_by_filename`オプションで同じLoRAが複数回選択されるのを防ぎます。
+
+**例:**
+```
+フォルダ構成:
+  /LoRA/
+    ├── style/anime_v1.safetensors
+    └── backup/anime_v1.safetensors
+
+unique_by_filename: True（デフォルト）
+  → anime_v1.safetensorsは1つだけ選択される
+  → 最初に見つかったものを保持（/LoRA/style/anime_v1.safetensors）
+  
+unique_by_filename: False
+  → 両方のファイルが選択される可能性あり
+  → 同じLoRAが異なる強度で2回適用される可能性
+```
+
+**重複検出時のログ出力:**
+```
+[FilteredRandomLoRALoader] Duplicate filename detected: anime_v1.safetensors
+  Keeping: /LoRA/style/anime_v1.safetensors
+  Skipping: /LoRA/backup/anime_v1.safetensors
+```
+
+**推奨:** 意図しない重複適用を避けるため、デフォルトの`True`を維持してください。
+
 ### メタデータ検索のパフォーマンス
 
 **ファイル名検索（デフォルト）:**
@@ -874,8 +907,6 @@ filter_mode: "OR"
 ```
 
 #### Wildcard Encodeとの連携
-
-![Wildcard Encode+FilteredRandomLoRALoderワークフロー](./images/filterd_final_wce.webp)
 
 ```
 [Wildcard Encode]
