@@ -14,6 +14,6 @@ classifiers = [
 Repository = "https://github.com/shin131002/RandomLoRALoader"
 
 [tool.comfy]
-PublisherId = ""
+PublisherId = "konohana"
 DisplayName = "RandomLoRALoader"
 Icon = ""
