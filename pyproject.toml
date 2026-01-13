@@ -5,6 +5,7 @@ description = "Randomly select and apply LoRAs with keyword filtering, LoRA Bloc
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
+publisher-id = "konohana"
 authors = [
     {name = "Your Name", email = "your.email@example.com"}  # 必要に応じて変更
 ]
