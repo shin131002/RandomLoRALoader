@@ -1,19 +1,37 @@
 [project]
-name = "randomloraloader"
-description = "Randomly select and apply LoRAs with keyword filtering, preview images, and multiple folder support for ComfyUI"
-version = "1.1.0"
-license = {file = "LICENSE"}
-
-classifiers = [
-    "Operating System :: OS Independent",
-    "Environment :: GPU :: NVIDIA CUDA",
-    "Environment :: GPU :: AMD ROCm",
+name = "comfyui-random-lora-loader"
+version = "1.2.0"
+description = "Randomly select and apply LoRAs with keyword filtering, LoRA Block Weight support, and preview images for ComfyUI"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}  # 必要に応じて変更
 ]
 
-[project.urls]
-Repository = "https://github.com/shin131002/RandomLoRALoader"
+keywords = ["comfyui", "lora", "stable-diffusion", "ai", "image-generation", "block-weight", "lbw"]
 
-[tool.comfy]
-PublisherId = ""
-DisplayName = "RandomLoRALoader"
-Icon = ""
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+
+[project.optional-dependencies]
+video = ["opencv-python>=4.0.0"]
+
+[project.urls]
+Homepage = "https://github.com/YOUR_USERNAME/RandomLoRALoader"
+Repository = "https://github.com/YOUR_USERNAME/RandomLoRALoader"
+Issues = "https://github.com/YOUR_USERNAME/RandomLoRALoader/issues"
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["RandomLoRALoader"]

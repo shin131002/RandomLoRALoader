@@ -1,15 +1,18 @@
 """
-Filtered Random LoRA Loader Node for ComfyUI
-キーワードフィルタ付きランダムLoRA選択・適用ノード（1グループ）
+Filtered Random LoRA Loader (Advanced) Node for ComfyUI
+キーワードフィルタ + LoRA Block Weight 対応ランダムLoRA選択・適用ノード
 
 Author: Your Name
-Version: 1.1.0
+Version: 1.2.0
 License: MIT
 
 機能:
 - 1つのフォルダから複数のLoRAをランダム選択
 - キーワードフィルタで絞り込み（AND/OR）
 - メタデータ検索（ファイル名 or メタデータ内）
+- LoRA Block Weight (LBW) 対応
+- SD1.5 / SDXL 対応
+- プリセット + カスタム設定
 - キャッシュ機能で高速化
 - 直列接続推奨
 """
@@ -22,7 +25,23 @@ import folder_paths
 import comfy.sd
 
 
-class FilteredRandomLoRALoader:
+# LBW プリセット定義
+SDXL_PRESETS = {
+    "Style Focused": "1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1",
+    "Character Focused": "1,1,1,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1",
+    "Structure/Composition Only": "1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0",
+    "Balanced / Soft": "1,1,1,1,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0"
+}
+
+SD15_PRESETS = {
+    "Style Focused": "1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1",
+    "Character Focused": "1,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1",
+    "Structure/Composition Only": "1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0",
+    "Balanced / Soft": "1,1,1,1,0,0,0,1,1,1,1,1,0,0,0,0,0"
+}
+
+
+class FilteredRandomLoRALoaderLBW:
     """キーワードフィルタ付きランダムLoRA選択・適用ノード（1グループ）"""
     
     # クラス変数（全インスタンスで共有するメタデータキャッシュ）
@@ -105,6 +124,24 @@ class FilteredRandomLoRALoader:
                     "step": 1
                 }),
                 
+                # LoRA Block Weight (LBW) 設定
+                "weight_mode": ([
+                    "Normal (All 1.0)",
+                    "Style Focused",
+                    "Character Focused",
+                    "Structure/Composition Only",
+                    "Balanced / Soft",
+                    "Preset: Random",
+                    "Direct Input"
+                ], {
+                    "default": "Normal (All 1.0)"
+                }),
+                "lbw_input": ("STRING", {
+                    "default": "",
+                    "multiline": False,
+                    "placeholder": "Comma-separated weights (SDXL: 20 elements, SD1.5: 17 elements)"
+                }),
+                
                 # トリガーワード設定
                 "trigger_word_source": (
                     ["json_combined", "json_random", "json_sample_prompt", "metadata"],
@@ -130,11 +167,15 @@ class FilteredRandomLoRALoader:
                    lora_folder_path, include_subfolders, unique_by_filename,
                    keyword_filter, filter_mode, search_in_metadata,
                    model_strength, clip_strength, num_loras,
+                   weight_mode, lbw_input,
                    trigger_word_source, seed):
         """メイン処理"""
         
         # seedの設定
         random.seed(seed)
+        
+        # LBW ウェイトの取得
+        lbw_weights = self._get_lbw_weights(weight_mode, lbw_input)
         
         # 初期値
         final_positive = additional_prompt_positive.strip()
@@ -142,14 +183,14 @@ class FilteredRandomLoRALoader:
         
         # num_loras が 0 の場合はスキップ
         if num_loras == 0:
-            print("[FilteredRandomLoRALoader] num_loras=0, skipping LoRA application")
+            print("[FilteredRandomLoRALoaderLBW] num_loras=0, skipping LoRA application")
             empty_preview = self._generate_preview_batch([])
             return self._generate_outputs(model, clip, final_positive, final_negative,
                                          token_normalization, weight_interpretation, empty_preview)
         
         # フォルダパスが空の場合はスキップ
         if not lora_folder_path.strip():
-            print("[FilteredRandomLoRALoader] Warning: lora_folder_path is empty, skipping")
+            print("[FilteredRandomLoRALoaderLBW] Warning: lora_folder_path is empty, skipping")
             empty_preview = self._generate_preview_batch([])
             return self._generate_outputs(model, clip, final_positive, final_negative,
                                          token_normalization, weight_interpretation, empty_preview)
@@ -158,7 +199,7 @@ class FilteredRandomLoRALoader:
         lora_files = self._find_lora_files(lora_folder_path, include_subfolders)
         
         if not lora_files:
-            print(f"[FilteredRandomLoRALoader] Warning: No LoRA files found in {lora_folder_path}")
+            print(f"[FilteredRandomLoRALoaderLBW] Warning: No LoRA files found in {lora_folder_path}")
             empty_preview = self._generate_preview_batch([])
             return self._generate_outputs(model, clip, final_positive, final_negative,
                                          token_normalization, weight_interpretation, empty_preview)
@@ -169,7 +210,7 @@ class FilteredRandomLoRALoader:
         )
         
         if not filtered_files:
-            print(f"[FilteredRandomLoRALoader] Warning: No LoRAs found matching filter '{keyword_filter}'")
+            print(f"[FilteredRandomLoRALoaderLBW] Warning: No LoRAs found matching filter '{keyword_filter}'")
             empty_preview = self._generate_preview_batch([])
             return self._generate_outputs(model, clip, final_positive, final_negative,
                                          token_normalization, weight_interpretation, empty_preview)
@@ -178,7 +219,7 @@ class FilteredRandomLoRALoader:
         if unique_by_filename:
             filtered_files = self._unique_by_filename(filtered_files)
             if not filtered_files:
-                print(f"[FilteredRandomLoRALoader] Warning: No LoRAs after deduplication")
+                print(f"[FilteredRandomLoRALoaderLBW] Warning: No LoRAs after deduplication")
                 empty_preview = self._generate_preview_batch([])
                 return self._generate_outputs(model, clip, final_positive, final_negative,
                                              token_normalization, weight_interpretation, empty_preview)
@@ -194,7 +235,7 @@ class FilteredRandomLoRALoader:
             selected_loras = filtered_files.copy()
             remaining = num_loras - available_count
             
-            print(f"[FilteredRandomLoRALoader] Warning: Requested {num_loras} LoRAs but only {available_count} available. Adding {remaining} duplicates.")
+            print(f"[FilteredRandomLoRALoaderLBW] Warning: Requested {num_loras} LoRAs but only {available_count} available. Adding {remaining} duplicates.")
             
             # 不足分をランダムに追加（重複あり）
             for _ in range(remaining):
@@ -213,12 +254,17 @@ class FilteredRandomLoRALoader:
             model_str = self._get_random_strength(model_strength)
             clip_str = self._get_random_strength(clip_strength)
             
-            # LoRA適用
-            model, clip = self._apply_lora(model, clip, lora_path, model_str, clip_str)
+            # LoRA適用（LBW対応）
+            model, clip = self._apply_lora(model, clip, lora_path, model_str, clip_str, lbw_weights)
             
-            # LoRA情報を記録
+            # LoRA情報を記録（LBW対応）
             lora_name = os.path.splitext(os.path.basename(lora_path))[0]
-            lora_notation = f"<lora:{lora_name}:{model_str}:{clip_str}>"
+            if lbw_weights:
+                # LBW形式: <lora:name:model:clip:lbw=weights>
+                lora_notation = f"<lora:{lora_name}:{model_str}:{clip_str}:lbw={lbw_weights}>"
+            else:
+                # 通常形式: <lora:name:model:clip>
+                lora_notation = f"<lora:{lora_name}:{model_str}:{clip_str}>"
             
             # トリガーワード取得
             if trigger_word_source == "json_sample_prompt":
@@ -270,7 +316,7 @@ class FilteredRandomLoRALoader:
     def _find_lora_files(self, folder_path, include_subfolders):
         """フォルダ内のLoRAファイルを検索"""
         if not os.path.exists(folder_path):
-            print(f"[FilteredRandomLoRALoader] Error: Folder not found: {folder_path}")
+            print(f"[FilteredRandomLoRALoaderLBW] Error: Folder not found: {folder_path}")
             return []
         
         lora_files = []
@@ -340,7 +386,7 @@ class FilteredRandomLoRALoader:
                 unique_files.append(file_path)
             else:
                 # 重複検出時はログ出力
-                print(f"[FilteredRandomLoRALoader] Duplicate filename detected: {filename}")
+                print(f"[FilteredRandomLoRALoaderLBW] Duplicate filename detected: {filename}")
                 print(f"  Keeping: {seen_names[filename]}")
                 print(f"  Skipping: {file_path}")
         
@@ -374,12 +420,12 @@ class FilteredRandomLoRALoader:
         total = len(lora_files)
         filtered = []
         
-        print(f"[FilteredRandomLoRALoader] Building metadata cache for {total} files...")
+        print(f"[FilteredRandomLoRALoaderLBW] Building metadata cache for {total} files...")
         
         for i, lora_path in enumerate(lora_files):
             # 進捗表示（100個ごと）
             if i > 0 and i % 100 == 0:
-                print(f"[FilteredRandomLoRALoader] Progress: {i}/{total} ({int(i/total*100)}%)")
+                print(f"[FilteredRandomLoRALoaderLBW] Progress: {i}/{total} ({int(i/total*100)}%)")
             
             filename = os.path.splitext(os.path.basename(lora_path))[0].lower()
             search_target = filename
@@ -397,7 +443,7 @@ class FilteredRandomLoRALoader:
                 if any(kw in search_target for kw in keywords):
                     filtered.append(lora_path)
         
-        print(f"[FilteredRandomLoRALoader] Cache built. Filtered {len(filtered)}/{total} files.")
+        print(f"[FilteredRandomLoRALoaderLBW] Cache built. Filtered {len(filtered)}/{total} files.")
         
         return filtered
     
@@ -498,7 +544,7 @@ class FilteredRandomLoRALoader:
                 with open(metadata_json_path, 'r', encoding='utf-8') as f:
                     return json.load(f)
             except Exception as e:
-                print(f"[FilteredRandomLoRALoader] Warning: Failed to load {metadata_json_path}: {e}")
+                print(f"[FilteredRandomLoRALoaderLBW] Warning: Failed to load {metadata_json_path}: {e}")
         
         # 2. .info
         info_path = f"{base_path}.info"
@@ -507,7 +553,7 @@ class FilteredRandomLoRALoader:
                 with open(info_path, 'r', encoding='utf-8') as f:
                     return json.load(f)
             except Exception as e:
-                print(f"[FilteredRandomLoRALoader] Warning: Failed to load {info_path}: {e}")
+                print(f"[FilteredRandomLoRALoaderLBW] Warning: Failed to load {info_path}: {e}")
         
         # 3. 埋め込みメタデータ
         embedded = self._load_embedded_metadata(lora_path)
@@ -686,7 +732,7 @@ class FilteredRandomLoRALoader:
             import numpy as np
             import torch
         except ImportError:
-            print("[FilteredRandomLoRALoader] PIL/torch not available for preview")
+            print("[FilteredRandomLoRALoaderLBW] PIL/torch not available for preview")
             return None
         
         # LoRAファイル名（拡張子なし）
@@ -749,7 +795,7 @@ class FilteredRandomLoRALoader:
                         return img
         
         except Exception as e:
-            print(f"[FilteredRandomLoRALoader] Folder read error: {e}")
+            print(f"[FilteredRandomLoRALoaderLBW] Folder read error: {e}")
         
         return None
     
@@ -763,7 +809,7 @@ class FilteredRandomLoRALoader:
             img = Image.open(image_path).convert('RGB')
             return self._resize_and_convert_image(img)
         except Exception as e:
-            print(f"[FilteredRandomLoRALoader] Static image load error ({image_path}): {e}")
+            print(f"[FilteredRandomLoRALoaderLBW] Static image load error ({image_path}): {e}")
             return None
     
     def _load_animated_image_first_frame(self, image_path):
@@ -782,7 +828,7 @@ class FilteredRandomLoRALoader:
             img = img.convert('RGB')
             return self._resize_and_convert_image(img)
         except Exception as e:
-            print(f"[FilteredRandomLoRALoader] Animated image load error ({image_path}): {e}")
+            print(f"[FilteredRandomLoRALoaderLBW] Animated image load error ({image_path}): {e}")
             return None
     
     def _load_video_first_frame(self, video_path):
@@ -818,7 +864,7 @@ class FilteredRandomLoRALoader:
             # opencv-pythonがインストールされていない（初回のみ警告）
             if not FilteredRandomLoRALoader._opencv_warning_shown:
                 print("=" * 60)
-                print("[FilteredRandomLoRALoader] Video Preview Support")
+                print("[FilteredRandomLoRALoaderLBW] Video Preview Support")
                 print("=" * 60)
                 print(f"Video file detected: {os.path.basename(video_path)}")
                 print("opencv-python is not installed.")
@@ -832,7 +878,7 @@ class FilteredRandomLoRALoader:
                 FilteredRandomLoRALoader._opencv_warning_shown = True
             return None
         except Exception as e:
-            print(f"[FilteredRandomLoRALoader] Video load error ({video_path}): {e}")
+            print(f"[FilteredRandomLoRALoaderLBW] Video load error ({video_path}): {e}")
             return None
     
     def _resize_and_convert_image(self, img):
@@ -873,11 +919,56 @@ class FilteredRandomLoRALoader:
             return torch.from_numpy(img_array)
         
         except Exception as e:
-            print(f"[FilteredRandomLoRALoader] Image resize/convert error: {e}")
+            print(f"[FilteredRandomLoRALoaderLBW] Image resize/convert error: {e}")
+            return None
+    
+    def _get_lbw_weights(self, weight_mode, lbw_input):
+        """
+        LBW ウェイトを取得（型は自動検出されるため、ここではプリセットのみ処理）
+        
+        Returns:
+            str: カンマ区切りのウェイト文字列、または None (Normal mode)
+        """
+        # Normal (All 1.0) の場合は None を返す（LBW構文なし）
+        if weight_mode == "Normal (All 1.0)":
+            return None
+        
+        # Preset: Random の場合
+        if weight_mode == "Preset: Random":
+            presets = ["Style Focused", "Character Focused", 
+                      "Structure/Composition Only", "Balanced / Soft"]
+            weight_mode = random.choice(presets)
+            print(f"[FilteredRandomLoRALoaderLBW] Random preset selected: {weight_mode}")
+        
+        # Direct Input の場合
+        if weight_mode == "Direct Input":
+            weights = lbw_input.strip()
+            
+            # 空欄の場合はNone（Normal All 1.0として扱う）
+            if not weights:
+                print(f"[FilteredRandomLoRALoaderLBW] Direct Input is empty, using Normal (All 1.0)")
+                return None
+            
+            # 数値チェックのみ（要素数チェックは _apply_lora で自動調整）
+            try:
+                weight_list = [w.strip() for w in weights.split(',')]
+                for w in weight_list:
+                    float(w)
+                return weights
+            except ValueError:
+                print(f"[FilteredRandomLoRALoaderLBW] Error: Invalid number in LBW input")
+                print(f"[FilteredRandomLoRALoaderLBW] Using default (All 1.0)")
+                return None
+        
+        # プリセットの場合（SDXLプリセットを使用、_apply_loraで自動調整）
+        if weight_mode in SDXL_PRESETS:
+            return SDXL_PRESETS[weight_mode]
+        else:
+            print(f"[FilteredRandomLoRALoaderLBW] Unknown weight_mode: {weight_mode}")
             return None
     
     def _get_random_strength(self, strength_str):
-        """強度をランダム取得（範囲指定対応、マイナス値・マイナス範囲対応）"""
+        """強度をランダム取得（範囲指定は0.1刻み、固定値は小数点2桁）"""
         import re
         strength_str = strength_str.strip()
         
@@ -887,34 +978,230 @@ class FilteredRandomLoRALoader:
         
         if match:
             try:
-                min_val = float(match.group(1))
-                max_val = float(match.group(2))
-                return str(round(random.uniform(min_val, max_val), 1))
+                # 範囲の上限下限を1桁に丸める
+                min_val = round(float(match.group(1)), 1)
+                max_val = round(float(match.group(2)), 1)
+                
+                # 0.1刻みの値のリストを生成
+                values = []
+                current = min_val
+                while current <= max_val + 0.01:  # 浮動小数点誤差対策
+                    values.append(round(current, 1))
+                    current += 0.1
+                
+                if not values:
+                    return "1.0"
+                
+                # ランダムに1つ選択
+                selected = random.choice(values)
+                return str(selected)
             except:
                 return "1.0"
         else:
-            # 単一値（マイナス含む）
+            # 単一値（小数点2桁に丸める）
             try:
-                float(strength_str)
-                return strength_str
+                value = float(strength_str)
+                return str(round(value, 2))
             except:
                 return "1.0"
     
-    def _apply_lora(self, model, clip, lora_path, model_strength, clip_strength):
-        """LoRAを適用"""
+    def _apply_lora(self, model, clip, lora_path, model_strength, clip_strength, lbw_weights=None):
+        """LoRAを適用（LBW対応）"""
         try:
             model_strength_f = float(model_strength)
             clip_strength_f = float(clip_strength)
             
             lora = comfy.utils.load_torch_file(lora_path, safe_load=True)
-            model_lora, clip_lora = comfy.sd.load_lora_for_models(
-                model, clip, lora, model_strength_f, clip_strength_f
-            )
+            
+            # LBWが指定されている場合
+            if lbw_weights:
+                # LoRAファイルからSD1.5/SDXLを自動検出
+                detected_type = self._detect_lora_type(lora)
+                
+                # ウェイトリストに変換
+                weights_list = [float(w.strip()) for w in lbw_weights.split(',')]
+                
+                # 要素数チェック（検出された型に基づく）
+                expected_count = 20 if detected_type == "SDXL" else 17
+                if len(weights_list) != expected_count:
+                    print(f"[FilteredRandomLoRALoaderLBW] Warning: LoRA is {detected_type} but got {len(weights_list)} weights (expected {expected_count})")
+                    print(f"[FilteredRandomLoRALoaderLBW] Adjusting weights to match LoRA type...")
+                    
+                    # ウェイトを調整
+                    if len(weights_list) < expected_count:
+                        # 足りない場合は1.0で埋める
+                        weights_list.extend([1.0] * (expected_count - len(weights_list)))
+                    else:
+                        # 多い場合は切り詰める
+                        weights_list = weights_list[:expected_count]
+                
+                # LoRAのキーを解析してブロックウェイトを適用
+                lora_with_weights = self._apply_block_weights(lora, weights_list, model_strength_f)
+                
+                # MODEL/CLIPに適用
+                model_lora, clip_lora = comfy.sd.load_lora_for_models(
+                    model, clip, lora_with_weights, 1.0, clip_strength_f
+                )
+            else:
+                # 通常適用
+                model_lora, clip_lora = comfy.sd.load_lora_for_models(
+                    model, clip, lora, model_strength_f, clip_strength_f
+                )
             
             return model_lora, clip_lora
         except Exception as e:
-            print(f"[FilteredRandomLoRALoader] Warning: Failed to apply LoRA {lora_path}: {e}")
+            print(f"[FilteredRandomLoRALoaderLBW] Warning: Failed to apply LoRA {lora_path}: {e}")
+            import traceback
+            traceback.print_exc()
             return model, clip
+    
+    def _detect_lora_type(self, lora_dict):
+        """
+        LoRAファイルからSD1.5/SDXLを自動検出
+        
+        Args:
+            lora_dict: LoRAの辞書
+        
+        Returns:
+            "SDXL" or "SD1.5"
+        """
+        # input_blocksの最大番号を確認
+        max_input_block = -1
+        for key in lora_dict.keys():
+            if "input_blocks" in key:
+                import re
+                match = re.search(r'input_blocks_(\d+)', key)
+                if match:
+                    block_num = int(match.group(1))
+                    max_input_block = max(max_input_block, block_num)
+        
+        # SD1.5: input_blocks_0~8 (9個)
+        # SDXL: input_blocks_0~8 (9個) ← 同じ！
+        
+        # output_blocksの最大番号を確認
+        max_output_block = -1
+        for key in lora_dict.keys():
+            if "output_blocks" in key:
+                import re
+                match = re.search(r'output_blocks_(\d+)', key)
+                if match:
+                    block_num = int(match.group(1))
+                    max_output_block = max(max_output_block, block_num)
+        
+        # SD1.5: output_blocks_0~11 (12個)
+        # SDXL: output_blocks_0~8 (9個)
+        
+        if max_output_block >= 9:
+            # output_blocks が 9以上 → SD1.5
+            return "SD1.5"
+        else:
+            # output_blocks が 8以下 → SDXL
+            return "SDXL"
+    
+    def _apply_block_weights(self, lora_dict, weights_list, base_strength):
+        """
+        LoRAのテンソルにブロックウェイトを適用
+        
+        Args:
+            lora_dict: LoRAの辞書
+            weights_list: ウェイトのリスト（SD1.5: 17, SDXL: 20）
+            base_strength: ベース強度
+        
+        Returns:
+            ウェイト適用済みのLoRA辞書
+        """
+        # ブロック名のマッピング（SD1.5/SDXL共通のパターン）
+        # キー名の例:
+        # "lora_unet_input_blocks_0_0.weight" → INブロック
+        # "lora_unet_middle_block_0.weight" → MIDブロック
+        # "lora_unet_output_blocks_0_0.weight" → OUTブロック
+        
+        weighted_lora = {}
+        
+        for key, value in lora_dict.items():
+            weight_multiplier = base_strength
+            
+            # UNetのLoRAキーのみ処理
+            if "lora_unet" in key:
+                block_index = self._get_block_index(key, len(weights_list))
+                if block_index is not None and block_index < len(weights_list):
+                    weight_multiplier = base_strength * weights_list[block_index]
+            
+            # ウェイトを適用
+            weighted_lora[key] = value * weight_multiplier
+        
+        return weighted_lora
+    
+    def _get_block_index(self, key, num_weights):
+        """
+        LoRAキー名からブロックインデックスを取得
+        
+        Args:
+            key: LoRAのキー名
+            num_weights: ウェイト数（17 or 20）
+        
+        Returns:
+            ブロックインデックス（0から始まる）
+        """
+        # BASE（常に0番目）
+        if "time_embed" in key or "label_emb" in key:
+            return 0
+        
+        # SD1.5の場合（17要素）
+        if num_weights == 17:
+            # INPUT blocks (IN01, IN02, IN04, IN05, IN07, IN08)
+            if "input_blocks" in key:
+                # input_blocks_X_... の X を抽出
+                import re
+                match = re.search(r'input_blocks_(\d+)', key)
+                if match:
+                    block_num = int(match.group(1))
+                    # SD1.5のINブロックマッピング
+                    # IN01=1, IN02=2, IN04=3, IN05=4, IN07=5, IN08=6
+                    in_mapping = {1: 1, 2: 2, 4: 3, 5: 4, 7: 5, 8: 6}
+                    if block_num in in_mapping:
+                        return in_mapping[block_num]
+            
+            # MIDDLE block (M00 = index 7)
+            elif "middle_block" in key:
+                return 7
+            
+            # OUTPUT blocks (OUT03-OUT11 = index 8-16)
+            elif "output_blocks" in key:
+                import re
+                match = re.search(r'output_blocks_(\d+)', key)
+                if match:
+                    block_num = int(match.group(1))
+                    # OUT03-OUT11 → index 8-16
+                    if block_num >= 3 and block_num <= 11:
+                        return 8 + (block_num - 3)
+        
+        # SDXLの場合（20要素）
+        elif num_weights == 20:
+            # INPUT blocks (IN00-IN08 = index 1-9)
+            if "input_blocks" in key:
+                import re
+                match = re.search(r'input_blocks_(\d+)', key)
+                if match:
+                    block_num = int(match.group(1))
+                    if block_num <= 8:
+                        return 1 + block_num
+            
+            # MIDDLE block (M00 = index 10)
+            elif "middle_block" in key:
+                return 10
+            
+            # OUTPUT blocks (OUT00-OUT08 = index 11-19)
+            elif "output_blocks" in key:
+                import re
+                match = re.search(r'output_blocks_(\d+)', key)
+                if match:
+                    block_num = int(match.group(1))
+                    if block_num <= 8:
+                        return 11 + block_num
+        
+        # デフォルト: BASEとして扱う
+        return 0
     
     
     def _generate_preview_batch(self, preview_images):
@@ -995,7 +1282,7 @@ class FilteredRandomLoRALoader:
             return (model, clip, final_positive, final_negative, 
                    positive_conditioning, negative_conditioning, preview_batch)
         except Exception as e:
-            print(f"[FilteredRandomLoRALoader] Error generating outputs: {e}")
+            print(f"[FilteredRandomLoRALoaderLBW] Error generating outputs: {e}")
             # エラー時は黒画像
             try:
                 import torch
@@ -1003,12 +1290,3 @@ class FilteredRandomLoRALoader:
             except:
                 black_image = None
             return (model, clip, final_positive, final_negative, None, None, black_image)
-
-
-NODE_CLASS_MAPPINGS = {
-    "FilteredRandomLoRALoader": FilteredRandomLoRALoader
-}
-
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "FilteredRandomLoRALoader": "Filtered Random LoRA Loader"
-}

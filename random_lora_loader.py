@@ -77,6 +77,9 @@ except ImportError:
 class RandomLoRALoader:
     """ランダムLoRA選択・適用ノード（3グループ対応）"""
     
+    # クラス変数（opencv警告表示フラグ）
+    _opencv_warning_shown = False
+    
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -311,6 +314,7 @@ class RandomLoRALoader:
         - "0.55" → 0.55（そのまま）
         - "0.4-0.8" → 0.4, 0.5, 0.6, 0.7, 0.8からランダム（0.1刻み）
         - "0.44-0.82" → 0.4, 0.5, 0.6, 0.7, 0.8からランダム（範囲を1桁に丸める）
+        - "-0.8--0.3" → -0.8, -0.7, -0.6, ..., -0.3からランダム（マイナス範囲対応）
         
         Args:
             strength_str: 強度文字列
@@ -318,18 +322,19 @@ class RandomLoRALoader:
         Returns:
             float: 実際に使用する強度値
         """
+        import re
         strength_str = str(strength_str).strip()
         
-        # ハイフンがあればランダム範囲指定
-        if '-' in strength_str:
+        # 範囲指定のパターンマッチ（マイナス値対応）
+        # 例: "0.6-0.9", "-0.8--0.3", "-0.5-0.5", "0.3--0.7"
+        range_pattern = r'^(-?\d+\.?\d*)\s*-\s*(-?\d+\.?\d*)$'
+        match = re.match(range_pattern, strength_str)
+        
+        if match:
             try:
-                parts = strength_str.split('-')
-                if len(parts) != 2:
-                    raise ValueError("範囲指定は 'min-max' 形式で入力してください")
-                
                 # 範囲の上限下限を1桁に丸める
-                min_val = round(float(parts[0].strip()), 1)
-                max_val = round(float(parts[1].strip()), 1)
+                min_val = round(float(match.group(1)), 1)
+                max_val = round(float(match.group(2)), 1)
                 
                 # バリデーション
                 if min_val < -10.0 or max_val > 10.0:
@@ -747,18 +752,20 @@ class RandomLoRALoader:
         プレビュー画像をTensorとして読み込み（部分一致、長辺1240px）
         
         検索方法:
-          LoRAファイル名（拡張子除く）で始まる画像ファイルを検索
+          LoRAファイル名（拡張子除く）で始まるファイルを検索
+          優先順位:
+            1. 静止画像 (.png, .jpg, .jpeg, .webp)
+            2. 動画ファイル (.gif, .webp, .mp4, .webm) の1フレーム目
+          
           例: style_anime_v1.safetensors
             → style_anime_v1.png
-            → style_anime_v1_preview.png
-            → style_anime_v1_001.jpg
+            → style_anime_v1_preview.jpg
+            → style_anime_v1.gif (1フレーム目)
+            → style_anime_v1.mp4 (1フレーム目、opencv-pythonが必要)
             → STYLE_ANIME_V1.PNG (大文字小文字無視)
         
         リサイズ:
           長辺を1240pxに統一（アスペクト比保持）
-          例: 1024x768 → 1240x930
-              512x512 → 1240x1240
-              800x1200 → 826x1240
         
         Returns:
             torch.Tensor: (H, W, C) 形式、見つからない場合はNone
@@ -774,56 +781,188 @@ class RandomLoRALoader:
         base_name = os.path.splitext(os.path.basename(lora_path))[0]
         folder = os.path.dirname(lora_path)
         
-        # 画像拡張子
-        image_extensions = ('.png', '.jpg', '.jpeg', '.webp', '.gif')
+        # ファイル拡張子（優先順位順）
+        static_image_exts = ('.png', '.jpg', '.jpeg')
+        animated_image_exts = ('.gif', '.webp')  # Pillowで対応可能
+        video_exts = ('.mp4', '.webm', '.avi', '.mov')  # opencv-python必要
         
         try:
             # 同じフォルダ内のファイルを検索
-            for file in os.listdir(folder):
-                # 部分一致（大文字小文字無視）
+            files = os.listdir(folder)
+            
+            # 部分一致するファイルを収集
+            matched_files = []
+            for file in files:
                 if file.lower().startswith(base_name.lower()):
-                    # 画像ファイルか確認
-                    if file.lower().endswith(image_extensions):
-                        preview_path = os.path.join(folder, file)
-                        try:
-                            img = Image.open(preview_path).convert('RGB')
-                            
-                            # 長辺を1240pxにリサイズ（アスペクト比保持）
-                            width, height = img.size
-                            max_size = 1240
-                            
-                            if max(width, height) > max_size:
-                                # 長辺が1240pxを超える場合はリサイズ
-                                if width > height:
-                                    new_width = max_size
-                                    new_height = int(height * (max_size / width))
-                                else:
-                                    new_height = max_size
-                                    new_width = int(width * (max_size / height))
-                                
-                                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                            elif max(width, height) < max_size:
-                                # 長辺が1240px未満の場合は拡大
-                                if width > height:
-                                    new_width = max_size
-                                    new_height = int(height * (max_size / width))
-                                else:
-                                    new_height = max_size
-                                    new_width = int(width * (max_size / height))
-                                
-                                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                            
-                            # numpy配列に変換 (H, W, C)
-                            img_array = np.array(img).astype(np.float32) / 255.0
-                            # Tensor化
-                            return torch.from_numpy(img_array)
-                        except Exception as e:
-                            print(f"[RandomLoRALoader] Preview load error ({preview_path}): {e}")
-                            continue
+                    matched_files.append(file)
+            
+            if not matched_files:
+                return None
+            
+            # 優先順位でソート
+            def get_priority(filename):
+                lower = filename.lower()
+                if any(lower.endswith(ext) for ext in static_image_exts):
+                    return 0  # 最優先
+                elif any(lower.endswith(ext) for ext in animated_image_exts):
+                    return 1  # 次優先
+                elif any(lower.endswith(ext) for ext in video_exts):
+                    return 2  # 最後
+                else:
+                    return 999  # その他
+            
+            matched_files.sort(key=get_priority)
+            
+            # 各ファイルを試す
+            for file in matched_files:
+                preview_path = os.path.join(folder, file)
+                lower_file = file.lower()
+                
+                # 静止画像
+                if any(lower_file.endswith(ext) for ext in static_image_exts):
+                    img = self._load_static_image(preview_path)
+                    if img is not None:
+                        return img
+                
+                # アニメーション画像（GIF/WebP）
+                elif any(lower_file.endswith(ext) for ext in animated_image_exts):
+                    img = self._load_animated_image_first_frame(preview_path)
+                    if img is not None:
+                        return img
+                
+                # 動画ファイル（opencv-python必要）
+                elif any(lower_file.endswith(ext) for ext in video_exts):
+                    img = self._load_video_first_frame(preview_path)
+                    if img is not None:
+                        return img
+        
         except Exception as e:
             print(f"[RandomLoRALoader] Folder read error: {e}")
         
         return None
+    
+    def _load_static_image(self, image_path):
+        """静止画像を読み込み"""
+        try:
+            from PIL import Image
+            import numpy as np
+            import torch
+            
+            img = Image.open(image_path).convert('RGB')
+            return self._resize_and_convert_image(img)
+        except Exception as e:
+            print(f"[RandomLoRALoader] Static image load error ({image_path}): {e}")
+            return None
+    
+    def _load_animated_image_first_frame(self, image_path):
+        """アニメーション画像（GIF/WebP）の1フレーム目を読み込み"""
+        try:
+            from PIL import Image
+            import numpy as np
+            import torch
+            
+            img = Image.open(image_path)
+            
+            # 1フレーム目に移動
+            if hasattr(img, 'seek'):
+                img.seek(0)
+            
+            img = img.convert('RGB')
+            return self._resize_and_convert_image(img)
+        except Exception as e:
+            print(f"[RandomLoRALoader] Animated image load error ({image_path}): {e}")
+            return None
+    
+    def _load_video_first_frame(self, video_path):
+        """動画ファイルの1フレーム目を読み込み（opencv-python必要）"""
+        try:
+            import cv2
+            from PIL import Image
+            import numpy as np
+            import torch
+            
+            # OpenCVで動画を開く
+            cap = cv2.VideoCapture(video_path)
+            
+            if not cap.isOpened():
+                return None
+            
+            # 1フレーム目を読み込み
+            ret, frame = cap.read()
+            cap.release()
+            
+            if not ret:
+                return None
+            
+            # BGR → RGB 変換
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            
+            # PIL Imageに変換
+            img = Image.fromarray(frame_rgb)
+            
+            return self._resize_and_convert_image(img)
+        
+        except ImportError:
+            # opencv-pythonがインストールされていない（初回のみ警告）
+            if not RandomLoRALoader._opencv_warning_shown:
+                print("=" * 60)
+                print("[RandomLoRALoader] Video Preview Support")
+                print("=" * 60)
+                print(f"Video file detected: {os.path.basename(video_path)}")
+                print("opencv-python is not installed.")
+                print("")
+                print("To enable video preview support, install:")
+                print("  pip install opencv-python")
+                print("")
+                print("Static images (.png/.jpg) and animated images (.gif/.webp)")
+                print("will continue to work without opencv-python.")
+                print("=" * 60)
+                RandomLoRALoader._opencv_warning_shown = True
+            return None
+        except Exception as e:
+            print(f"[RandomLoRALoader] Video load error ({video_path}): {e}")
+            return None
+    
+    def _resize_and_convert_image(self, img):
+        """画像をリサイズしてTensorに変換"""
+        try:
+            from PIL import Image
+            import numpy as np
+            import torch
+            
+            # 長辺を1240pxにリサイズ（アスペクト比保持）
+            width, height = img.size
+            max_size = 1240
+            
+            if max(width, height) > max_size:
+                # 長辺が1240pxを超える場合はリサイズ
+                if width > height:
+                    new_width = max_size
+                    new_height = int(height * (max_size / width))
+                else:
+                    new_height = max_size
+                    new_width = int(width * (max_size / height))
+                
+                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            elif max(width, height) < max_size:
+                # 長辺が1240px未満の場合は拡大
+                if width > height:
+                    new_width = max_size
+                    new_height = int(height * (max_size / width))
+                else:
+                    new_height = max_size
+                    new_width = int(width * (max_size / height))
+                
+                img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+            # numpy配列に変換 (H, W, C)
+            img_array = np.array(img).astype(np.float32) / 255.0
+            # Tensor化
+            return torch.from_numpy(img_array)
+        
+        except Exception as e:
+            print(f"[RandomLoRALoader] Image resize/convert error: {e}")
+            return None
     
     def _generate_preview_batch(self, preview_images):
         """

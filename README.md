@@ -2,13 +2,26 @@
 
 **English | [日本語版 README](./README_ja.md)**
 
-A ComfyUI custom node package for randomly selecting and applying LoRAs. Includes two nodes:
+A ComfyUI custom node package for randomly selecting and applying LoRAs. Includes three nodes:
 
 1. **Random LoRA Loader** - Select from 3 folders simultaneously
-2. **Filtered Random LoRA Loader** - Single folder with keyword filtering (NEW v1.1.0)
+2. **Filtered Random LoRA Loader** - Single folder with keyword filtering
+3. **Filtered Random LoRA Loader (LBW)** - 🆕 LBW support with automatic SD1.5/SDXL detection (NEW v1.2.0)
 
 ![Random LoRA Loader Workflow Example](./images/RLL_final_single.webp)
 ![Filtered Random LoRA Loader Workflow Example](./images/filterd_final_single.webp)
+![FilteredRandomLoRALoader(LBW) Workflow Example](./images/lbw_final_single.webp)
+
+---
+
+## ⚠️ Important: Supported Models
+
+**These nodes are designed for SD1.5 and SDXL models ONLY.**
+
+- ✅ **Supported:** Stable Diffusion 1.5, Stable Diffusion XL (SDXL)
+- ❌ **NOT Supported:** Flux, SD3, SDXL Turbo, Pony, or other architectures
+
+The LBW node's block weight feature specifically targets SD1.5/SDXL U-Net architecture. Other model types will not work correctly with LBW.
 
 ---
 
@@ -23,7 +36,7 @@ Select LoRAs from up to 3 different folders. Ideal for folder-based organization
 - Fixed LoRA categories
 - Simple folder-based workflow
 
-### Filtered Random LoRA Loader (NEW)
+### Filtered Random LoRA Loader
 
 Select LoRAs from a single folder using keyword filtering. Ideal for dynamic selection and large collections.
 
@@ -33,45 +46,101 @@ Select LoRAs from a single folder using keyword filtering. Ideal for dynamic sel
 - Metadata search capability
 - Recommended for chaining multiple instances
 
+### Filtered Random LoRA Loader (LBW) 🆕 NEW v1.2.0
+
+Advanced node with LoRA Block Weight (LBW) support for precise effect control.
+
+**Use case:**
+- Separate control of style vs. structure
+- Fine-tuned LoRA application
+- Professional workflows requiring precision
+- 4 preset modes + custom input
+
+**See [README_LBW.md](README_LBW.md) for detailed LBW documentation.**
+
 ---
 
-## Key Features (Both Nodes)
+## Key Features
 
-- **3-Group Support**: Select LoRAs from up to 3 different folders
+### Common Features (All Nodes)
+
 - **Multi-Source Metadata Reading**: Automatically retrieve trigger words and sample prompts with priority order:
   1. `.metadata.json` format (ComfyUI Lora Manager) - Priority 1
   2. `.info` format (Civitai Helper) - Priority 2
-  3. **Embedded metadata in LoRA file** - Priority 3 (NEW)
-- **Strength Randomization**: Randomize strength with range specification (e.g., `0.4-0.8`)
+  3. **Embedded metadata in LoRA file** - Priority 3
+- **Strength Randomization**: 
+  - **Range specification with negative support**: `0.4-0.8`, `-0.8--0.3` (v1.2.0)
+  - **0.1 increments for ranges**: Easier to observe effect differences
+  - **Fixed values rounded to 2 decimals**: `0.847` → `0.85`
 - **Flexible Trigger Word Retrieval**:
   - `json_combined`: Combine all trigger word patterns (with deduplication)
   - `json_random`: Randomly select one pattern
   - `json_sample_prompt`: Randomly retrieve sample prompts
-  - **`metadata`**: Read directly from embedded metadata (NEW)
+  - `metadata`: Read directly from embedded metadata
 - **Sample Prompt Optimization**: Automatically remove LoRA syntax from samples and apply node-configured strength
 - **Dual Text Outputs**: Separate positive_text and negative_text outputs
 - **ComfyUI Standard Seed Control**: Supports fixed/randomize/increment/decrement
 - **Wildcard Encode Integration**: Works seamlessly with Wildcard Encode (Inspire)
 - **LoRA Syntax Auto-Removal**: Cleans up LoRA syntax in additional_prompt to prevent noise
+- **Preview Image Support**: Display preview images/videos for selected LoRAs (v1.1.0)
+- **Duplicate Filename Handling**: Exclude duplicate filenames across subfolders (v1.1.0)
+
+### Filtered Nodes (Filtered & LBW)
+
+- **Keyword Filtering**: Space-separated keywords with phrase support
+- **AND/OR Modes**: Flexible filtering logic
+- **Metadata Search**: Search in filenames or embedded metadata
+- **Fast Caching**: Instant metadata access after first load
+
+### LBW Node Only 🆕
+
+- **LoRA Block Weight Support**: Control which U-Net blocks are affected
+- **Automatic SD1.5/SDXL Detection**: No manual model type selection needed
+- **4 Preset Modes**:
+  - Style Focused - OUTPUT blocks only
+  - Character Focused - Balanced IN+MID+OUT
+  - Structure/Composition Only - INPUT+MID blocks only
+  - Balanced / Soft - Gentle application
+- **Preset: Random Mode**: Randomly select one of the 4 presets
+- **Direct Input Mode**: Custom weight specification
+- **Automatic Weight Adjustment**: Handles mismatched element counts
+
+---
 
 ## Installation
+
+### ⚠️ Optional: Video Preview Support
+
+**For video file preview (.mp4, .webm, .avi, .mov), opencv-python is REQUIRED:**
+
+```bash
+pip install opencv-python
+```
+
+**Without opencv-python:**
+- ✅ Static images (.png, .jpg, .jpeg) work
+- ✅ Animated images (.gif, .webp) work  
+- ❌ **Video files will show BLACK SCREEN** (with warning message in console)
+
+LoRA functionality works normally regardless of opencv-python installation. Only preview display is affected.
 
 ### Requirements
 
 - ComfyUI (works with standard installation)
-- **No additional libraries required** ✅
+- Python 3.9+
+- **Core dependencies included with ComfyUI** ✅
 
 ### Steps
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/shin131002/RandomLoRALoader.git
+git clone https://github.com/YOUR_USERNAME/RandomLoRALoader.git
 # Or manually create RandomLoRALoader folder and copy files
 ```
 
 Restart ComfyUI.
 
-**Note:** Uses only Python standard library and ComfyUI bundled libraries, so no `pip install` needed.
+**Note:** Uses only Python standard library and ComfyUI bundled libraries for core functionality. opencv-python is optional for video preview only.
 
 ### Uninstallation
 
@@ -88,9 +157,11 @@ rmdir /s RandomLoRALoader
 
 Or manually delete the RandomLoRALoader folder and restart ComfyUI.
 
+---
+
 ## Usage
 
-### Basic Usage
+### Basic Usage (Random LoRA Loader)
 
 1. **Add Node**: Search for "Random LoRA Loader" in the node browser
 2. **Connect MODEL/CLIP**: Connect base model and CLIP to inputs
@@ -119,7 +190,7 @@ This node works seamlessly with Wildcard Encode (Inspire) for dynamic prompt gen
   text: "__style__, {red|blue|green}, <lora:base_effect:0.5>"
   ↓
   ├─ populated_text ──→ [Random LoRA Loader]
-  │                     additional_prompt
+  │                     additional_prompt_positive
   └─ MODEL/CLIP ──────→ model/clip input
   
 [Random LoRA Loader]
@@ -155,8 +226,8 @@ This node works seamlessly with Wildcard Encode (Inspire) for dynamic prompt gen
 ```
 Group 1: style LoRAs
   - num_loras_1: 2
-  - model_strength_1: "0.6-0.9"  ← Random
-  - clip_strength_1: "0.6-0.9"   ← Random
+  - model_strength_1: "0.6-0.9"  ← Random (0.1 increments)
+  - clip_strength_1: "0.6-0.9"   ← Random (0.1 increments)
 
 Group 2: character LoRAs
   - num_loras_2: 1
@@ -170,6 +241,8 @@ Group 3: Unused
 → Result: 2 style LoRAs (variable strength) + 1 character LoRA (fixed strength) = 3 LoRAs total
 ```
 
+---
+
 ## Settings
 
 ### Common Settings
@@ -178,7 +251,8 @@ Group 3: Unused
 |---------|-------------|---------|
 | `token_normalization` | Token normalization method | `none` |
 | `weight_interpretation` | Prompt emphasis notation interpretation | `A1111` |
-| `additional_prompt` | Additional prompt (combined with trigger words) | (empty) |
+| `additional_prompt_positive` | Additional positive prompt (combined with trigger words) | (empty) |
+| `additional_prompt_negative` | Additional negative prompt | (empty) |
 | `trigger_word_source` | Trigger word source | `json_combined` |
 | `seed` | Random selection seed | `0` |
 
@@ -209,7 +283,7 @@ CLIP tokenization: [1girl, lora, anime, style, 0, 8, beautiful]
 
 **Correct usage:**
 ```
-additional_prompt: "1girl, beautiful"  ← No LoRA syntax ✅
+additional_prompt_positive: "1girl, beautiful"  ← No LoRA syntax ✅
 LoRA application: Use folder specification feature ✅
 ```
 
@@ -217,7 +291,7 @@ Or, when connecting from Wildcard Encode, LoRA syntax is automatically removed:
 ```
 [Wildcard Encode] populated_text: "1girl, <lora:style:0.8>, beautiful"
        ↓
-[This Node] additional_prompt received → LoRA syntax auto-removed
+[This Node] additional_prompt_positive received → LoRA syntax auto-removed
        ↓
 Final prompt: "1girl, beautiful" ✅
 ```
@@ -235,9 +309,11 @@ Each group can be configured individually:
 | `clip_strength_X` | CLIP application strength | `"1.0"` |
 | `num_loras_X` | Number of LoRAs to select | Group 1: `1`, Groups 2/3: `0` |
 
+---
+
 ## Strength Specification (Important)
 
-Strength fields accept **fixed values** or **random ranges**.
+Strength fields accept **fixed values** or **random ranges**, including **negative values**.
 
 ### Fixed Value
 
@@ -246,740 +322,828 @@ Input: "1.0"
 → Always applied at 1.0
 
 Input: "0.55"
-→ Always applied at 0.55
-```
+→ Rounded to 0.55 (2 decimals)
 
-**Features:**
-- Input value used as-is
-- Up to 2 decimal places (e.g., `0.55`)
+Input: "-0.5"
+→ Negative LoRA at -0.5 ✅ (v1.2.0)
+```
 
 ### Random Range
 
-```
-Input: "0.4-0.8"
-→ Randomly selects from 0.4, 0.5, 0.6, 0.7, 0.8 (0.1 increments)
-
-Input: "0.5-1.0"
-→ Randomly selects from 0.5, 0.6, 0.7, 0.8, 0.9, 1.0
-
-Input: "0.44-0.82"
-→ Randomly selects from 0.4, 0.5, 0.6, 0.7, 0.8
-   (Range automatically rounded to 1 decimal place)
-```
-
-**Features:**
-- Specify range with hyphen (`-`)
-- Values generated in 0.1 increments
-- Range bounds with 2+ decimal places are rounded to 1 decimal place
-- Different value selected each execution
-
-### Error Handling
+**Format:** `min-max`
 
 ```
-Input: "abc" or invalid format
-→ Error logged, processed with strength 1.0
+Input: "0.6-0.9"
+→ Random from [0.6, 0.7, 0.8, 0.9] (0.1 increments)
+
+Input: "-0.8--0.3"
+→ Random from [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3] ✅ (v1.2.0)
+
+Input: "-0.5-0.5"
+→ Random from [-0.5, -0.4, ..., 0.4, 0.5] ✅
 ```
 
-**Error message example:**
-```
-[RandomLoRALoader] ❌ Cannot parse strength 'abc', using 1.0
-[RandomLoRALoader] 💡 Usage: '1.0' or '0.4-0.8'
-```
+**v1.2.0 Improvements:**
+- ✅ **Negative range support**: `-0.8--0.3` now works correctly
+- ✅ **0.1 increments for all ranges**: Easier to observe effect differences
+- ✅ **Fixed values rounded to 2 decimals**: `0.847` → `0.85`
 
-### Verifying Actual Strength
+### Behavior
 
-Actual strength used can be verified in `positive_text` output:
-
-```
-<lora:style_anime:0.7:0.6>, anime style, vibrant,
-               ↑   ↑
-          MODEL    CLIP
-          strength strength
-```
-
-**Recommended:** Connect Show Text node to `positive_text` to verify actual strength.
-
-## MODEL Strength vs CLIP Strength
-
-### Basic Concept
-
-- **MODEL strength**: Affects image itself (art style, composition, colors)
-- **CLIP strength**: Affects prompt understanding (trigger word effectiveness)
-
-### Recommended Settings
-
-**Beginners / General Use:**
-```
-model_strength: "1.0"
-clip_strength: "1.0"
-```
-Using same value for both is the standard approach.
-
-**Advanced / Fine-tuning:**
-```
-model_strength: "0.7"
-clip_strength: "1.0"
-```
-For cases like wanting subtle art style but strong trigger word effect.
-
-**Randomization for Experimentation:**
-```
-model_strength: "0.6-0.9"
-clip_strength: "0.6-0.9"
-```
-For testing various strength combinations.
-
-## Trigger Word Retrieval Methods
-
-### json_combined (All Combined)
-
-Combines all trigger word patterns and removes duplicates.
-
-**Example:**
-```json
-"trainedWords": [
-  "character, red hair, blue eyes, uniform",
-  "character, red hair, blue eyes, casual clothes"
-]
-```
-↓
-```
-Output: character, red hair, blue eyes, uniform, casual clothes
-```
-
-### json_random (Random Selection)
-
-Randomly selects one pattern from trigger words.
-
-**Example:**
-```json
-"trainedWords": [
-  "character, red hair, blue eyes, uniform",
-  "character, red hair, blue eyes, casual clothes"
-]
-```
-↓
-```
-Output: character, red hair, blue eyes, casual clothes (random)
-```
-
-### json_sample_prompt (Sample Retrieval)
-
-Randomly retrieves one sample prompt from JSON.
-
-- Outputs both positive_text and negative_text
-- Automatically removes `<lora:xxx:x.x>` syntax from samples
-- Generates new LoRA syntax with node-configured strength
-
-**Example:**
-```json
-"images": [{
-  "meta": {
-    "prompt": "1girl, <lora:style:0.8>, beautiful",
-    "negativePrompt": "bad quality, worst quality"
-  }
-}]
-```
-↓
-```
-positive_text: 1girl, beautiful (LoRA syntax removed)
-negative_text: bad quality, worst quality
-```
-
-### metadata (Embedded Metadata Only - NEW)
-
-Reads trigger words **directly from LoRA file's embedded metadata**, ignoring external `.metadata.json` and `.info` files.
-
-**Supported metadata fields:**
-- `ss_tag_frequency`: kohya_ss format tag frequency (extracts top 20 tags)
-- `modelspec.trigger_word`: Trigger word
-- `ss_output_name`: Model name
-
-**Use case:**
-- When you want to use only the metadata embedded by the LoRA trainer
-- When external JSON files contain incorrect information
-- For LoRAs without external metadata files
+**All Nodes:**
+- Range: 0.1 increments list → random selection
+- Fixed: Rounded to 2 decimals
 
 **Example:**
 ```
-LoRA file contains embedded metadata:
-  ss_tag_frequency: {"dataset1": {"alice": 150, "blonde": 120, ...}}
-  ↓
-Output: alice, blonde, blue_eyes, ...
+model_strength_1: "0.6-0.9"
+→ Each execution randomly selects from [0.6, 0.7, 0.8, 0.9]
+→ Console: "[RandomLoRALoader] Selected strength: 0.7"
 ```
-
-**Note:** Other modes (`json_combined`, `json_random`, `json_sample_prompt`) use external files with priority, falling back to embedded metadata if external files are not found.
-
-## Outputs
-
-| Output | Type | Description |
-|--------|------|-------------|
-| `MODEL` | MODEL | Model with LoRA applied |
-| `CLIP` | CLIP | CLIP with LoRA applied |
-| `positive_text` | STRING | LoRA info and positive prompt |
-| `negative_text` | STRING | Negative prompt (json_sample_prompt only) |
-| `positive` | CONDITIONING | Positive conditioning |
-| `negative` | CONDITIONING | Negative conditioning |
-
-### positive_text Output Example
-
-```
-1girl, beautiful,
-<lora:style_anime_v2:0.7:0.6>, anime style, vibrant colors,
-<lora:character_alice:1.0:1.0>, alice, blonde hair, blue eyes,
-```
-
-## Required File Structure
-
-**Metadata files or embedded data** required for trigger word retrieval.
-
-### Priority Order
-
-The node reads metadata in the following priority order:
-
-1. **`.metadata.json`** (ComfyUI Lora Manager format)
-2. **`.info`** (Civitai Helper format)
-3. **Embedded metadata in LoRA file** (Always available if LoRA was trained with metadata)
-
-### 1. ComfyUI Lora Manager format (Recommended)
-
-```
-/path/to/lora/
-├── style_anime_v2.safetensors
-├── style_anime_v2.metadata.json  ← ComfyUI Lora Manager
-├── character_alice.safetensors
-└── character_alice.metadata.json
-```
-
-### 2. Civitai Helper format
-
-```
-/path/to/lora/
-├── style_anime_v2.safetensors
-├── style_anime_v2.info  ← Civitai Helper
-├── character_alice.safetensors
-└── character_alice.info
-```
-
-### 3. Embedded metadata (No external file needed)
-
-```
-/path/to/lora/
-├── style_anime_v2.safetensors  ← Contains embedded metadata
-└── character_alice.safetensors  ← Contains embedded metadata
-```
-
-**Note:** 
-- If external files (`.metadata.json` or `.info`) exist, they take priority over embedded metadata (except when using `trigger_word_source: metadata`)
-- When `trigger_word_source` is set to `metadata`, only embedded metadata is read, ignoring external files
-
-### Generating metadata files
-
-**ComfyUI Lora Manager (Recommended):**
-- [ComfyUI Lora Manager](https://github.com/willmiao/ComfyUI-Lora-Manager)
-- Generates `.metadata.json` files
-
-**Civitai Helper:**
-- [Civitai Helper](https://github.com/butaixianran/Stable-Diffusion-Webui-Civitai-Helper)
-- Generates `.info` files (also supported)
-
-**Embedded metadata:**
-- Automatically created during LoRA training with kohya_ss or other trainers
-- No additional tools required
-
-## Troubleshooting
-
-### Cannot retrieve trigger words
-
-**For external metadata files:**
-- Check if metadata file exists (`.metadata.json` or `.info`)
-- Verify JSON contains `civitai.trainedWords` or `civitai.images`
-- Confirm filename matches `{LoRAfilename}.metadata.json` or `{LoRAfilename}.info`
-
-**For embedded metadata:**
-- Set `trigger_word_source` to `metadata` to read directly from LoRA file
-- Check if LoRA was trained with metadata (most modern LoRAs include this)
-- Supported fields: `ss_tag_frequency`, `modelspec.trigger_word`, `ss_output_name`
-
-
-### additional_prompt with LoRA syntax doesn't work
-
-**Symptom:**
-```
-additional_prompt: "<lora:anime_style:0.8>, 1girl"
-→ anime_style not applied
-```
-
-**Cause:**
-This node doesn't interpret `<lora:xxx:0.8>` syntax. LoRA syntax is automatically removed.
-
-**Solution:**
-1. Use folder specification feature for LoRA application
-2. When integrating with Wildcard Encode (Inspire), let it handle LoRA syntax
-
-### Unintended words in prompt
-
-**Symptom:**
-```
-additional_prompt: "<lora:anime_style:0.8>"
-→ "anime", "style" words automatically added
-```
-
-**Cause:**
-v1.0.0 and later automatically remove LoRA syntax, so this issue doesn't occur.
-If using older version, LoRA syntax filename part was interpreted as tokens.
-
-**Solution:**
-- Update node to latest version
-- Don't write LoRA syntax in additional_prompt
-
-### LoRA not applied
-
-- Verify folder path is correct
-- Check `num_loras` isn't 0
-- Check ComfyUI console for error logs
-
-### Strength not as intended
-
-- Check `positive_text` output with Show Text
-- Displays actual strength like `<lora:xxx:0.7:0.6>`
-- With random range specification, different value selected each time
-- Check console for strength selection log: `[RandomLoRALoader] Selected 0.6 from range 0.4-0.8`
-
-### Strength input error
-
-**Symptom:**
-```
-[RandomLoRALoader] ❌ Cannot parse strength 'abc', using 1.0
-```
-
-**Solution:**
-- Use correct format: `"1.0"` or `"0.4-0.8"`
-- Range specification must use hyphen (`-`)
-- Node won't crash with invalid input, operates with 1.0
-
-### Default values not displayed
-
-- Completely restart ComfyUI
-- Clear browser cache (Ctrl+Shift+R)
-- Delete and re-add node
-
-### Console shows many "lora key not loaded" messages
-
-**Symptom:**
-```
-lora key not loaded: lora_unet_input_blocks_4_1_proj_in.alpha
-lora key not loaded: lora_unet_input_blocks_4_1_proj_in.lora_down.weight
-...
-```
-
-**Cause and Solution:**
-
-These messages are compatibility warnings output by ComfyUI core and **don't affect functionality**. Displayed when some keys in LoRA file aren't compatible with current model, but compatible keys apply normally.
-
-v1.0.0 and later automatically suppress these warning messages. If still displayed in large quantities:
-
-1. Verify node file is latest version
-2. Restart ComfyUI
-3. If still appears and functionality is fine, safe to ignore
-
-## Tips & Tricks
-
-### Random LoRA Loader: Using as a LoRA Syntax Filter Only
-
-You can use this node as a simple LoRA syntax remover without applying any LoRAs.
-
-**Setup:**
-- Set all `num_loras` to `0` (or leave all folder paths empty)
-- Connect Wildcard Encode's `populated_text` to `additional_prompt`
-- Connect `positive_text` output to next node
-
-**Use case:**
-- Remove LoRA syntax from Wildcard Encode output
-- Clean up prompts before passing to other nodes
-- Use Wildcard Encode's LoRA processing while removing the syntax for compatibility
-
-**Example workflow:**
-```
-[Wildcard Encode (Inspire)]
-  text: "__style__, {red|blue|green}, <lora:base_effect:0.5>"
-  ↓
-  populated_text: "anime style, blue, <lora:base_effect:0.5>"
-  (LoRA already applied to MODEL by Wildcard Encode)
-  ↓
-[Random LoRA Loader]
-  num_loras: 0, 0, 0  ← No LoRA application
-  additional_prompt ← Connected from populated_text
-  ↓
-  positive_text: "anime style, blue,"  ← LoRA syntax removed ✅
-  ↓
-[Next Node]
-```
-
-**Benefits:**
-- ✅ Removes `<lora:filename:strength>` syntax that can become noise tokens
-- ✅ No need for separate text processing nodes
-- ✅ Works with any text containing LoRA syntax
 
 ---
 
-## Filtered Random LoRA Loader (NEW v1.1.0)
+## MODEL Strength vs CLIP Strength
 
-![Filtered Random LoRA Loader x1 Workflow](./images/filterd_final_single.webp)
+### MODEL Strength
+- **Affects**: Image itself (art style, composition, colors, shapes)
+- **Effect**: Visual characteristics of generated image
+- **Example**: 
+  - High value: Strong art style transfer
+  - Low value: Subtle style hints
 
-### Overview
+### CLIP Strength
+- **Affects**: Prompt interpretation (concept understanding, language-image association)
+- **Effect**: How strongly the model follows prompt instructions
+- **Example**:
+  - High value: Strong semantic guidance from trigger words
+  - Low value: Weak semantic influence
 
-A single-group LoRA loader with keyword filtering capabilities. Designed for chaining multiple instances together.
+### Recommended Settings
 
-**Key differences from Random LoRA Loader:**
-- Single folder path (not 3)
-- Keyword filtering with AND/OR modes
-- Metadata search capability with caching
-- Dual prompt inputs (positive and negative)
-- Recommended for serial connection
+**For most use cases:**
+```
+model_strength: 0.8
+clip_strength: 0.8
+→ Balanced application
+```
+
+**For subtle style application:**
+```
+model_strength: 0.4-0.6
+clip_strength: 0.8-1.0
+→ Light visual effect, strong semantic guidance
+```
+
+**For strong style override:**
+```
+model_strength: 1.0-1.2
+clip_strength: 0.6-0.8
+→ Strong visual effect, moderate semantic guidance
+```
+
+---
+
+## Trigger Word Retrieval Methods
+
+### json_combined (Default)
+
+Combines all trigger word patterns from JSON metadata.
+
+**Source:**
+1. `activation text` field
+2. `ss_tag_frequency` keys (first 3 highest frequency)
+3. `modelspec.description` keywords
+4. `ss_output_name` keywords
+
+**Example:**
+```json
+{
+  "activation text": "anime style, detailed eyes",
+  "ss_tag_frequency": {
+    "1girl": 500,
+    "blue eyes": 300,
+    "long hair": 250
+  }
+}
+```
+**Result:** `"anime style, detailed eyes, 1girl, blue eyes, long hair"`
+
+---
+
+### json_random
+
+Randomly selects one trigger word pattern.
+
+**Example:**
+```
+Candidates:
+- "anime style, detailed eyes"
+- "1girl, blue eyes, long hair"
+- "anime, girl, portrait"
+
+Random selection: "1girl, blue eyes, long hair"
+```
+
+---
+
+### json_sample_prompt
+
+Retrieves sample prompts from JSON metadata.
+
+**Source fields (priority order):**
+1. `sample_prompts`
+2. `civitai.images[0].meta.prompt`
+
+**Processing:**
+- Automatically removes LoRA syntax (`<lora:xxx:0.8>`)
+- Replaces with node-configured strength
+- Extracts negative prompt if available
+
+**Example:**
+```json
+{
+  "sample_prompts": "1girl, <lora:style:0.9>, beautiful, detailed eyes"
+}
+```
+**Result:** `"1girl, beautiful, detailed eyes"` (LoRA syntax removed)
+
+---
+
+### metadata
+
+Reads trigger words directly from embedded LoRA file metadata.
+
+**Source:**
+- Safetensors metadata keys
+- Similar to json_combined but reads from LoRA file directly
+
+**Use when:**
+- No external JSON files available
+- Want to use original training metadata
+
+---
+
+## Outputs
+
+All nodes provide the following outputs:
+
+| Output | Type | Description |
+|--------|------|-------------|
+| `MODEL` | MODEL | Model with LoRAs applied |
+| `CLIP` | CLIP | CLIP with LoRAs applied |
+| `positive` | CONDITIONING | Positive conditioning (LoRA syntax removed) |
+| `negative` | CONDITIONING | Negative conditioning |
+| `positive_text` | STRING | Full positive prompt text with LoRA syntax |
+| `negative_text` | STRING | Full negative prompt text |
+| `preview` | IMAGE | Batch of preview images for selected LoRAs (v1.1.0) |
+
+### Text Output Format
+
+**positive_text example:**
+```
+<lora:style_anime:0.8:0.8>, <lora:character_alice:1.0:1.0>, anime style, alice, blonde hair, 1girl, beautiful
+```
+
+**LBW node positive_text example:**
+```
+<lora:style_anime:0.8:0.8:lbw=1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1>, anime style, 1girl, beautiful
+```
+
+**positive (CONDITIONING) content:**
+```
+anime style, alice, blonde hair, 1girl, beautiful
+(LoRA syntax removed for clean prompt)
+```
+
+### Preview Images (v1.1.0)
+
+**Supported formats (priority order):**
+1. Static images (.png, .jpg, .jpeg) - Always works
+2. Animated images (.gif, .webp) - First frame, always works
+3. Video files (.mp4, .webm, .avi, .mov) - First frame, requires opencv-python
+
+**File matching:**
+- Files starting with the LoRA filename (case-insensitive)
+- Example: `style_anime.safetensors` matches:
+  - `style_anime.png` ✅
+  - `style_anime_preview.jpg` ✅
+  - `STYLE_ANIME.PNG` ✅
+
+---
+
+## Filtered Random LoRA Loader
+
+**Single folder with keyword filtering.**
+
+![Filtered Random LoRA Loader Workflow](./images/filterd_final_single.webp)
+
+### Key Features
+
+- **Keyword Filtering**: Filter LoRAs by space-separated keywords
+- **AND/OR Modes**: Flexible filtering logic
+- **Phrase Matching**: Use quotes for exact phrases
+- **Metadata Search**: Search in filenames or embedded metadata
+- **Fast Caching**: Instant metadata access after first load
+- **Serial Connection Ready**: Chain multiple instances for complex workflows
 
 ### Parameters
 
-#### Common Settings
-- `token_normalization` - Same as Random LoRA Loader
-- `weight_interpretation` - Same as Random LoRA Loader
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `lora_folder_path` | LoRA folder path | (empty) |
+| `keyword_filter` | Space-separated keywords or quoted phrases | (empty) |
+| `filter_mode` | `AND` / `OR` | `AND` |
+| `search_in_metadata` | Search in JSON/embedded metadata | `false` |
+| `num_loras` | Number of LoRAs to select | `1` |
+| `model_strength` | MODEL strength (fixed or range) | `"1.0"` |
+| `clip_strength` | CLIP strength (fixed or range) | `"1.0"` |
+| `include_subfolders` | Include subfolders | `true` |
+| `unique_by_filename` | Exclude duplicate filenames | `true` |
 
-#### Folder Settings
-- `lora_folder_path` - Single folder path
-- `include_subfolders` - Include subfolders (default: True)
-- `unique_by_filename` - Exclude duplicate filenames across subfolders (default: True)
+### Keyword Filter Syntax
 
-#### Keyword Filter
-- `keyword_filter` - Keywords (comma-separated, e.g., "style, anime")
-- `filter_mode` - AND (all keywords) or OR (any keyword, default: AND)
-- `search_in_metadata` - Search in metadata files (default: False - filename only)
-
-#### LoRA Settings
-- `model_strength` - MODEL strength (e.g., "1.0" or "0.6-0.9")
-- `clip_strength` - CLIP strength (e.g., "1.0" or "0.6-0.9")
-- `num_loras` - Number of LoRAs to select (default: 1, range: 0-20)
-
-#### Trigger Word Settings
-- `trigger_word_source` - Same as Random LoRA Loader
-
-#### Additional Prompts
-- `additional_prompt_positive` - Additional positive prompt (input or direct entry)
-- `additional_prompt_negative` - Additional negative prompt (input or direct entry)
-
-#### Seed
-- `seed` - Random seed
-- `control_after_generate` - Seed control mode
-
-### Keyword Filtering
-
-#### Filename Search (Default - Fast)
-
-Searches only in LoRA filename.
-
-**Example:**
+**Basic keywords (AND mode):**
 ```
-Folder contents:
-  - style_anime_v1.safetensors
-  - style_realistic.safetensors
-  - character_alice.safetensors
-
-keyword_filter: "anime"
-→ Matches: style_anime_v1.safetensors ✅
+keyword_filter: "anime girl"
+→ Matches files containing BOTH "anime" AND "girl"
 ```
 
-#### Metadata Search (Optional - Slower)
-
-Searches in both filename and metadata fields:
-- `model_name`
-- `civitai.name`
-- `civitai.trainedWords`
-- `civitai.model.name`
-- `civitai.model.tags`
-- `tags`
-- Embedded metadata
-
-**Performance Notes:**
-
-Initial loading time (SSD environment, with progress display):
-- 100 files: Instant
-- 1,000 files: ~2 seconds
-- 5,000 files: ~10 seconds
-- 10,000 files: ~20 seconds
-- 20,000 files: ~40 seconds
-- 50,000 files: ~100 seconds (1 min 40 sec)
-
-Memory usage:
-- 10,000 files: ~150MB
-- 20,000 files: ~300MB
-- 50,000 files: ~750MB
-
-**Second time onward:** Instant (cached)
-
-**Recommendations:**
-- Default filename search is always fast
-- Enable metadata search only when needed
-- For large collections (5,000+ files), initial loading will take time
-- HDD environments take approximately 3x longer than SSD for initial loading
-
-**Example:**
+**OR mode:**
 ```
-File: abc123.safetensors
-Metadata: {"trainedWords": ["anime style", "vibrant colors"]}
-
-search_in_metadata: True
-keyword_filter: "anime"
-→ Matches ✅
+filter_mode: OR
+keyword_filter: "anime realistic"
+→ Matches files containing "anime" OR "realistic"
 ```
 
-#### AND vs OR Modes
-
-**AND Mode (default):**
+**Phrase matching:**
 ```
-keyword_filter: "style, anime"
-filter_mode: "AND"
-→ Matches files containing BOTH "style" AND "anime"
+keyword_filter: '"anime style" detailed'
+→ Must contain exact phrase "anime style" AND word "detailed"
 ```
 
-**OR Mode:**
+**Multiple phrases:**
 ```
-keyword_filter: "style, anime"
-filter_mode: "OR"
-→ Matches files containing EITHER "style" OR "anime"
-```
-
-### Handling Duplicate Filenames
-
-If the same LoRA filename exists in multiple subfolders (e.g., originals and backups), the `unique_by_filename` option prevents selecting the same LoRA multiple times.
-
-**Example:**
-```
-Folder structure:
-  /LoRA/
-    ├── style/anime_v1.safetensors
-    └── backup/anime_v1.safetensors
-
-unique_by_filename: True (default)
-  → Only one anime_v1.safetensors will be selected
-  → First occurrence is kept (/LoRA/style/anime_v1.safetensors)
-  
-unique_by_filename: False
-  → Both files can be selected
-  → May result in same LoRA applied twice with different strengths
+keyword_filter: '"anime style" "detailed eyes" red'
+→ Must contain "anime style" AND "detailed eyes" AND "red"
 ```
 
-**Log output when duplicates detected:**
+### Metadata Search
+
+**Filename search (default):**
 ```
-[FilteredRandomLoRALoader] Duplicate filename detected: anime_v1.safetensors
-  Keeping: /LoRA/style/anime_v1.safetensors
-  Skipping: /LoRA/backup/anime_v1.safetensors
+search_in_metadata: false
+→ Fast, searches only filenames
 ```
-
-**Recommendation:** Keep default `True` to avoid unintentional duplicate applications.
-
-### Metadata Search Performance
-
-**Filename search (Default):**
-- `search_in_metadata: False` (default)
-- Very fast even with 10,000+ LoRAs
-- Processing time: <100ms
 
 **Metadata search:**
-- `search_in_metadata: True`
-- Searches in both filename and LoRA metadata
-- **First execution:** Builds cache
-  - 1,000 LoRAs: ~2 seconds
-  - 10,000 LoRAs: ~7-75 seconds (depends on metadata files)
-  - Progress displayed in console
-- **Subsequent executions:** Very fast (<100ms)
-- Cache persists until ComfyUI restart
-
-**Performance tip:**
-- Use `include_subfolders: True` on first run to cache all LoRAs at once
-- After cache is built, `include_subfolders: False` will still use cached metadata
-- Cache is shared across all node instances
-
-### Usage Examples
-
-#### Basic Usage
-
 ```
-[Filtered Random LoRA Loader]
-  lora_folder_path: /loras/all/
-  keyword_filter: "anime"
-  num_loras: 1
-  ↓
-Randomly selects 1 LoRA containing "anime" in filename
+search_in_metadata: true
+→ Slower, searches JSON/embedded metadata
+→ Cached after first search (instant on 2nd+)
 ```
 
-#### Chaining Multiple Instances
+**Performance:**
+- Initial load (SSD):
+  - 1,000 files: ~2 seconds
+  - 5,000 files: ~10 seconds
+  - 10,000 files: ~20 seconds
+- 2nd+ time: Instant (<100ms)
+- Memory: ~150MB per 10,000 files
+
+### Use Cases
+
+#### Example 1: Character Selection
+
+```
+lora_folder_path: "/path/to/all_loras"
+keyword_filter: "character girl"
+filter_mode: AND
+num_loras: 1
+```
+
+**Result:** Select 1 character LoRA containing both "character" and "girl"
+
+---
+
+#### Example 2: Multiple Instances (Recommended)
 
 ![Filtered Random LoRA Loader x2 Workflow](./images/filterd_final_double.webp)
 
 ```
-[Filtered Random LoRA Loader A]
-  folder: /loras/all/
-  keyword_filter: "style, anime"
-  filter_mode: "AND"
+[Load Checkpoint]
+  ↓
+[Filtered Random LoRA Loader #1]
+  keyword_filter: "style anime"
   num_loras: 1
   ↓
-[Filtered Random LoRA Loader B]
-  folder: /loras/all/
+[Filtered Random LoRA Loader #2]
   keyword_filter: "character"
   num_loras: 1
-  additional_prompt_positive ← A's positive_text
-  additional_prompt_negative ← A's negative_text
   ↓
-[Filtered Random LoRA Loader C]
-  folder: /loras/all/
-  keyword_filter: "concept"
-  num_loras: 1
-  additional_prompt_positive ← B's positive_text
-  additional_prompt_negative ← B's negative_text
+[KSampler]
 ```
 
-#### With Wildcard Encode
-
-![Wildcard Encode + Filtered Random LoRA Loader Workflow](./images/filterd_final_wce.webp)
-
-```
-[Wildcard Encode]
-  populated_text: "1girl, beautiful"
-  negative_text: "bad quality"
-  ↓
-[Filtered Random LoRA Loader]
-  additional_prompt_positive ← populated_text
-  additional_prompt_negative ← negative_text
-  keyword_filter: "style"
-  ↓
-Combined output ✅
-```
-
-### Best Practices
-
-1. **Use descriptive filenames:** `style_anime_v1.safetensors`
-2. **Default mode (fast):** Keep `search_in_metadata: False` for daily use
-3. **Enable metadata search when:**
-   - Filenames don't contain useful keywords
-   - Need to search in trigger words or tags
-4. **First run optimization:**
-   - Use `include_subfolders: True` once to build complete cache
-   - Switch to `False` after for faster folder scanning
-5. **Chaining:**
-   - Connect `positive_text` → next node's `additional_prompt_positive`
-   - Connect `negative_text` → next node's `additional_prompt_negative`
-
-### Troubleshooting
-
-**No LoRAs found matching filter:**
-- Check if keyword exists in filenames
-- Enable `search_in_metadata: True` to search in metadata
-- Try OR mode instead of AND mode
-- Verify folder path is correct
-
-**First execution is slow:**
-- This is normal when `search_in_metadata: True`
-- Cache is being built, subsequent executions will be fast
-- Progress is shown in console
-
-**Cache not working:**
-- Cache clears on ComfyUI restart
-- Run once after startup to rebuild cache
+**Benefits:**
+- Different filtering per category
+- Independent strength settings
+- More flexibility
 
 ---
 
-## Tips & Tricks (Original Node)
+#### Example 3: Metadata Search
 
-### Using as a LoRA Syntax Filter Only
+```
+search_in_metadata: true
+keyword_filter: "detailed eyes"
+```
 
-You can use this node as a simple LoRA syntax remover without applying any LoRAs.
+**Searches in:**
+- Filenames
+- JSON `activation text`
+- JSON `ss_tag_frequency`
+- JSON `modelspec.description`
+- Embedded LoRA metadata
 
-**Setup:**
-- Set all `num_loras` to `0` (or leave all folder paths empty)
-- Connect Wildcard Encode's `populated_text` to `additional_prompt`
-- Connect `positive_text` output to next node
+---
 
-**Use case:**
-- Remove LoRA syntax from Wildcard Encode output
-- Clean up prompts before passing to other nodes
-- Use Wildcard Encode's LoRA processing while removing the syntax for compatibility
+## Filtered Random LoRA Loader (LBW) 🆕 NEW v1.2.0
+
+**Advanced node with LoRA Block Weight support.**
+
+![FilteredRandomLoRALoader(LBW) Workflow Example](./images/lbw_final_single.webp)
+
+### What is LBW?
+
+LoRA Block Weight allows you to control which parts of the U-Net are affected by the LoRA:
+
+```
+INPUT blocks  → Structure, composition, layout
+   ↓
+MIDDLE block  → Overall features
+   ↓
+OUTPUT blocks → Style, details, fine-tuning
+```
+
+### Key Features
+
+- **4 Preset Modes**:
+  - **Style Focused**: OUTPUT blocks only (style without changing structure)
+  - **Character Focused**: Balanced IN+MID+OUT (character features)
+  - **Structure/Composition Only**: INPUT+MID blocks (layout without style)
+  - **Balanced / Soft**: Gentle application (natural results)
+- **Preset: Random**: Randomly select one of the 4 presets
+- **Direct Input**: Custom weight specification
+- **Automatic SD1.5/SDXL Detection**: No manual model type selection
+- **Automatic Weight Adjustment**: Handles mismatched element counts
+
+### Parameters
+
+Same as Filtered Random LoRA Loader, plus:
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `weight_mode` | LBW preset or Direct Input | `Normal (All 1.0)` |
+| `lbw_input` | Custom weights (for Direct Input) | (empty) |
+
+### Weight Modes
+
+#### Normal (All 1.0)
+Standard LoRA application without block weighting.
+
+#### Style Focused
+```
+SDXL: 1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1
+SD1.5: 1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1
+```
+- OUTPUT blocks only
+- Style without changing structure
+- Use for: Art style LoRAs, effect LoRAs
+
+#### Character Focused
+```
+SDXL: 1,1,1,1,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1
+SD1.5: 1,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1
+```
+- Balanced IN+MID+OUT
+- Character features preserved
+- Use for: Character LoRAs, person LoRAs
+
+#### Structure/Composition Only
+```
+SDXL: 1,1,1,1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0
+SD1.5: 1,1,1,1,1,1,1,1,0,0,0,0,0,0,0,0,0
+```
+- INPUT+MID blocks only
+- Structure without changing style
+- Use for: Pose LoRAs, composition LoRAs
+
+#### Balanced / Soft
+```
+SDXL: 1,1,1,1,0,0,0,0,0,0,1,1,1,1,1,1,0,0,0,0
+SD1.5: 1,1,1,1,0,0,0,1,1,1,1,1,0,0,0,0,0
+```
+- Gentle application
+- Natural results
+- Use for: General LoRAs, multi-LoRA workflows
+
+#### Preset: Random
+Randomly selects one of the 4 presets above each execution.
+
+#### Direct Input
+```
+weight_mode: Direct Input
+lbw_input: "1,0.5,0.5,0,0,0,0,0,0,0,1,0.8,0.8,0.8,0.8,0.8,0.5,0.5,0.5,0.5"
+```
+- Custom weight specification
+- SDXL: 20 elements, SD1.5: 17 elements
+- Auto-adjusted if count doesn't match
+
+### Use Cases
+
+#### Example 1: Style Only
+
+```
+[Filtered Random LoRA Loader (LBW)]
+  keyword_filter: "anime watercolor"
+  weight_mode: Style Focused
+  ↓
+[KSampler]
+```
+
+**Result:** Applies anime watercolor style without changing composition
+
+---
+
+#### Example 2: Structure then Style
+
+```
+[Load Checkpoint]
+  ↓
+[Filtered Random LoRA Loader (LBW)]
+  keyword_filter: "pose"
+  weight_mode: Structure/Composition Only
+  ↓
+[Filtered Random LoRA Loader (LBW)]
+  keyword_filter: "oil painting"
+  weight_mode: Style Focused
+  ↓
+[KSampler]
+```
+
+**Result:** Pose adjustment → Oil painting style applied
+
+---
+
+#### Example 3: Custom Weights
+
+```
+weight_mode: Direct Input
+lbw_input: "1,0.5,0.5,0.5,0,0,0,0,0,0,1,1,1,1,1,1,0.5,0.5,0.5,0.5"
+```
+
+**Result:** Custom block weight distribution
+
+---
+
+### Advanced: Custom Presets
+
+You can edit presets directly in the source file:
+
+**File:** `filtered_random_lora_loader_lbw.py` (lines 29-41)
+
+See [README_LBW.md](README_LBW.md) for detailed customization guide.
+
+---
+
+## Tips & Tricks
+
+### Serial Connection for Multiple Effects
+
+Connect nodes in series to apply different LoRA categories:
+
+```
+[Load Checkpoint]
+  ↓
+[Filtered Random LoRA Loader (LBW)] (Structure/Composition Only)
+  keyword_filter: "pose"
+  ↓
+[Filtered Random LoRA Loader (LBW)] (Style Focused)
+  keyword_filter: "watercolor"
+  ↓
+[KSampler]
+```
+
+**Benefits:**
+- Different settings per category
+- Cumulative LoRA effects
+- More control over final result
+
+---
+
+### Strength Randomization for Variety
+
+Use ranges instead of fixed values:
+
+```
+model_strength_1: "0.6-0.9"
+clip_strength_1: "0.6-0.9"
+```
+
+**Effect:**
+- Each generation uses different strength
+- More variety in results
+- Easier to find optimal strength
+
+---
+
+### Keyword Filtering Best Practices
+
+**Use specific keywords:**
+```
+✅ Good: "anime girl"
+❌ Too broad: "anime"
+```
+
+**Combine with metadata search:**
+```
+search_in_metadata: true
+keyword_filter: "detailed eyes"
+```
+
+**Use phrases for precision:**
+```
+keyword_filter: '"anime style" detailed'
+→ Must contain exact phrase "anime style" AND word "detailed"
+```
+
+---
+
+### Wildcard Encode + Random LoRA Loader
+
+**Ultimate dynamic workflow:**
+
+```
+[Wildcard Encode (Inspire)]
+  text: "__style__, __pose__, {red|blue|green}"
+  ↓
+  populated_text ──→ [Random LoRA Loader]
+                     additional_prompt_positive
+  ↓
+[KSampler]
+```
+
+**Result:**
+- Wildcard expansion for prompts
+- Random LoRA selection for variety
+- Clean prompt without LoRA syntax
+- Maximum flexibility
+
+---
+
+### Preview Images for Organization
+
+Enable preview display to:
+- See which LoRAs were selected
+- Verify LoRA appearance before generation
+- Organize LoRA collections visually
+
+**Recommended workflow:**
+```
+[Random LoRA Loader]
+  preview ──→ [Preview Image] (for verification)
+  MODEL ──→ [KSampler]
+```
+
+---
+
+## Troubleshooting
+
+### No LoRAs Found
+
+**Check:**
+1. LoRA folder path is correct (absolute path)
+2. `.safetensors` files exist in the folder
+3. `include_subfolders` setting if LoRAs are in subfolders
+4. Console for error messages
+
+**Example valid paths:**
+```
+Windows: C:/ComfyUI/models/loras/style
+Linux/Mac: /home/user/ComfyUI/models/loras/style
+```
+
+---
+
+### No Trigger Words Found
+
+**Check:**
+1. Metadata files (`.metadata.json` or `.info`) exist
+2. JSON files contain required fields:
+   - `activation text`
+   - `ss_tag_frequency`
+   - `sample_prompts`
+   - `civitai.trainedWords` or `civitai.images`
+3. Try different `trigger_word_source` settings
+
+**Verify JSON format:**
+```json
+{
+  "activation text": "anime style, detailed",
+  "ss_tag_frequency": {...},
+  "modelspec.description": "...",
+  "sample_prompts": "..."
+}
+```
+
+---
+
+### LoRA Not Applied
+
+**Check:**
+1. `num_loras` is not 0
+2. Strength values are not all 0
+3. MODEL/CLIP outputs are connected properly
+4. Console for LoRA application messages
+5. For LBW node: weight_mode is not "Normal (All 1.0)" with all weights set to 0
+
+---
+
+### Preview Images Not Showing
+
+**Check:**
+1. Preview files match LoRA filename
+2. For video files: opencv-python is installed (`pip install opencv-python`)
+3. Supported formats: .png, .jpg, .jpeg, .gif, .webp, .mp4, .webm, .avi, .mov
+4. File permissions are correct
+
+**Without opencv-python:**
+- Static images work ✅
+- Animated images work ✅
+- Video files show black screen ⚠️
+
+---
+
+### Strength Not Working with Negative Values (Fixed in v1.2.0)
+
+**Previous issue (v1.1.0):**
+```
+Input: "-0.5"
+Result: 1.0 ❌ (converted to default)
+```
+
+**Fixed in v1.2.0:**
+```
+Input: "-0.5"
+Result: -0.5 ✅ (negative LoRA applied correctly)
+
+Input: "-0.8--0.3"
+Result: Random from [-0.8, -0.7, -0.6, -0.5, -0.4, -0.3] ✅
+```
+
+---
+
+### Wildcard Encode Issues
+
+**If wildcard text appears in output:**
+
+1. **Check connection**: Connect Wildcard Encode's `populated_text` to `additional_prompt_positive`
+2. **Wrong output**: Don't connect `text` (input) to this node
+3. **LoRA syntax appearing**: This node automatically removes it
 
 **Example workflow:**
 ```
 [Wildcard Encode (Inspire)]
-  text: "__style__, {red|blue|green}, <lora:base_effect:0.5>"
-  ↓
-  populated_text: "anime style, blue, <lora:base_effect:0.5>"
-  (LoRA already applied to MODEL by Wildcard Encode)
-  ↓
-[Random LoRA Loader]
-  num_loras: 0, 0, 0  ← No LoRA application
-  additional_prompt ← Connected from populated_text
-  ↓
-  positive_text: "anime style, blue,"  ← LoRA syntax removed ✅
-  ↓
-[Next Node]
+  populated_text ──→ [Random LoRA Loader]
+  (not "text")       additional_prompt_positive
 ```
 
-**Benefits:**
-- ✅ Removes `<lora:filename:strength>` syntax that can become noise tokens
-- ✅ No need for separate text processing nodes
-- ✅ Works with any text containing LoRA syntax
+---
+
+### Duplicate LoRAs Selected
+
+**Solution:** Enable `unique_by_filename`
+
+```
+unique_by_filename_1: true
+```
+
+This prevents selecting the same LoRA from different subfolders:
+```
+/style/lora.safetensors
+/backup/lora.safetensors
+→ Only one selected ✅
+```
+
+---
+
+## Detailed Documentation
+
+- **[README_LBW.md](README_LBW.md)** - Complete LBW documentation (English)
+- **[README_LBW_ja.md](README_LBW_ja.md)** - LBW詳細ガイド（日本語）
+- **[README_ja.md](README_ja.md)** - 日本語メインドキュメント
+
+---
 
 ## Disclaimer and Support Policy
 
-### About This Node
+### Disclaimer
 
-This custom node was developed for personal use and is being shared publicly.
+- This node is provided as-is with **no technical support**
+- No warranty or guarantee of functionality
+- No guaranteed compatibility with future ComfyUI updates
+- Bug reports and feature requests may not be addressed
+- Use at your own risk
 
-### Support
+### Support Status
 
-- ❌ **No technical support provided**
-  - Usage questions
-  - Environment setup assistance
-  - Individual troubleshooting support
+- ❌ No individual support via issues or email
+- ❌ No guaranteed bug fixes or feature additions
+- ✅ Code is open source - feel free to fork and modify
+- ✅ Community discussions welcome (no promises of response)
 
-- ❌ **No warranty**
-  - Operation in specific environments
-  - Compatibility with future ComfyUI updates
-  - Liability for data loss, etc.
+### Reporting Issues
 
-### Community Contributions
+While support is not guaranteed, you can:
+1. Check existing issues in the repository
+2. Review this README and troubleshooting section
+3. Open an issue (may or may not be addressed)
+4. Fork and fix it yourself
 
-The following are welcome but not guaranteed to be addressed:
-
-- ✅ Bug reports (Issues)
-- ✅ Pull requests
-- ✅ Feature suggestions
-
-### Terms of Use
-
-- Use entirely at your own risk
-- Test thoroughly before production use
-- Author assumes no liability for any issues
+---
 
 ## License
 
 MIT License
 
-Copyright (c) 2025
-
-This software is provided "as is" without any express or implied warranties.
+---
 
 ## Changelog
 
-### v1.0.0 (2024-12-30)
-- Initial public release
-- 3-group support (select from different folders)
-- Strength randomization (range specification: `0.4-0.8`)
-- External JSON reading (Civitai Helper compatible)
-- Auto-remove LoRA syntax in sample prompts
-- **Auto-remove LoRA syntax in additional_prompt** (noise prevention)
-- Separate positive_text/negative_text outputs
-- Wildcard Encode (Inspire) integration
-- Fully local operation (no API required)
+### v1.2.0 (2026-01-13)
+
+#### Added
+- ✅ **NEW NODE**: Filtered Random LoRA Loader (LBW)
+- ✅ LoRA Block Weight (LBW) support with 4 presets
+- ✅ Automatic SD1.5/SDXL detection for LBW
+- ✅ Preset: Random mode for LBW
+- ✅ Direct Input mode for custom LBW weights
+- ✅ Automatic weight adjustment for LBW
+- ✅ **Negative value support for strength**: `-0.5`, `-0.8--0.3` now work correctly
+- ✅ **Video preview support**: .mp4, .webm, .avi, .mov (requires opencv-python)
+- ✅ **Strength precision improvements**:
+  - Range specification: 0.1 increments for all nodes
+  - Fixed values: Rounded to 2 decimals
+
+#### Fixed
+- ✅ **Critical bug**: Negative single values (`"-0.5"`) now work correctly (previously converted to 1.0)
+- ✅ **Critical bug**: Negative ranges (`"-0.8--0.3"`) now work correctly (previously caused errors)
+- ✅ Improved strength parsing with regex pattern matching
+
+#### Changed
+- ✅ Unified strength behavior across all 3 nodes
+- ✅ Renamed node: "Filtered Random LoRA Loader (Advanced)" → "Filtered Random LoRA Loader (LBW)"
+- ✅ Enhanced documentation with model compatibility warnings
+
+### v1.1.0 (2026-01-04)
+
+#### Added
+- ✅ **NEW NODE**: Filtered Random LoRA Loader
+- ✅ Keyword filtering with AND/OR modes
+- ✅ Metadata search with caching
+- ✅ Preview image output (IMAGE type)
+- ✅ Duplicate filename handling (`unique_by_filename`)
+- ✅ Animated image support (.gif, .webp)
+
+#### Changed
+- ✅ **Breaking**: Split `additional_prompt` into `additional_prompt_positive` and `additional_prompt_negative`
+- ✅ Unified strength precision to 1 decimal place
+- ✅ Improved LoRA syntax removal
+
+#### Fixed
+- ✅ Fixed negative_text output in `json_sample_prompt` mode
+- ✅ Fixed LoRA syntax appearing in metadata trigger words
+- ✅ Fixed duplicate parameter in INPUT_TYPES
+
+### v1.0.0 (2025-12-30)
+
+#### Added
+- ✅ Initial release
+- ✅ Random LoRA Loader with 3-group support
+- ✅ Multi-source metadata reading
+- ✅ Strength randomization with range specification
+- ✅ Trigger word extraction
+- ✅ Wildcard Encode compatibility
+- ✅ CONDITIONING output with cleaned prompts
+
+---
 
 ## References
 
 - [ComfyUI](https://github.com/comfyanonymous/ComfyUI)
-- [ComfyUI Lora Manager](https://github.com/willmiao/ComfyUI-Lora-Manager) - Generates `.metadata.json` (Recommended)
-- [Civitai Helper](https://github.com/butaixianran/Stable-Diffusion-Webui-Civitai-Helper) - Generates `.info` (Also supported)
+- [Wildcard Encode (Inspire)](https://github.com/ltdrdata/ComfyUI-Inspire-Pack)
+- [LoRA Block Weight Theory](https://github.com/hako-mikan/sd-webui-lora-block-weight)
+
+---
+
+**Enjoy flexible LoRA randomization with precise control! 🎲✨**

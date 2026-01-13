@@ -4,13 +4,41 @@ __pycache__/
 *$py.class
 *.so
 .Python
+*.egg-info/
+dist/
+build/
 
-# IDE
+# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
+
+# Personal folders
+old/
+backup/
+test/
+tmp/
+temp/
+archive/
+_old/
+_backup/
+_test/
+
+# Development files
+DEVELOPMENT_SUMMARY.md
+note_article.md
+release_notes_*.md
+*_backup.md
+*_fixed.toml
+__init___no_advanced.py
+
+# User data
+*.log
+*.cache
