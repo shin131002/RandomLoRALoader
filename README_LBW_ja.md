@@ -176,6 +176,8 @@ BASE,IN (OFF),M00,OUT (ON)
    num_loras: 1
    ```
 
+   > フォルダスキャンの挙動（対象拡張子、シンボリックリンクの追跡、候補リストのソート）は他のノードと共通です。詳細は[README_ja.md の「フォルダスキャンについて」](README_ja.md#フォルダスキャンについて)を参照してください。
+
 3. **LBWモードを選択**
    ```
    weight_mode: "Style Focused"

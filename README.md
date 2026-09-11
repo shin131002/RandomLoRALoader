@@ -245,6 +245,20 @@ Group 3: Unused
 
 ## Settings
 
+### Folder Scanning
+
+All three nodes scan the folders you point them at the same way.
+
+**Supported extensions:** `.safetensors`, `.pt`, `.ckpt` (case-insensitive).
+
+> Note: `.pt` and `.ckpt` files have no readable embedded metadata, so trigger words for them come only from `.metadata.json` / `.info` sidecar files.
+
+**Symbolic links are followed.** A subfolder that is a symlink is descended into, matching ComfyUI's own folder scan — so LoRAs that only exist behind a link are included as candidates, just as they appear in ComfyUI's native LoRA dropdown. Link loops are detected and skipped rather than hanging the scan, and a folder reachable through two different links is only scanned once.
+
+**The candidate list is sorted before selection.** This makes a given `seed` reproduce the same selection on any machine. Prior to v1.3.0 the order came straight from the filesystem, so the same seed could pick different LoRAs on a different PC.
+
+> ⚠️ Because the ordering changed, an existing workflow may select a different set of LoRAs after upgrading to v1.3.0, even with a fixed seed. If a result you were relying on changes, re-roll or re-pick the seed.
+
 ### Common Settings
 
 | Setting | Description | Default |
@@ -303,7 +317,7 @@ Each group can be configured individually:
 | Setting | Description | Default |
 |---------|-------------|---------|
 | `lora_folder_path_X` | LoRA folder absolute path | (empty) |
-| `include_subfolders_X` | Include subfolders | `true` |
+| `include_subfolders_X` | Include subfolders (symbolic links are followed) | `true` |
 | `unique_by_filename_X` | Exclude duplicate filenames | `true` |
 | `model_strength_X` | MODEL application strength | `"1.0"` |
 | `clip_strength_X` | CLIP application strength | `"1.0"` |
@@ -558,7 +572,7 @@ anime style, alice, blonde hair, 1girl, beautiful
 | `num_loras` | Number of LoRAs to select | `1` |
 | `model_strength` | MODEL strength (fixed or range) | `"1.0"` |
 | `clip_strength` | CLIP strength (fixed or range) | `"1.0"` |
-| `include_subfolders` | Include subfolders | `true` |
+| `include_subfolders` | Include subfolders (symbolic links are followed) | `true` |
 | `unique_by_filename` | Exclude duplicate filenames | `true` |
 
 ### Keyword Filter Syntax
@@ -923,7 +937,7 @@ Enable preview display to:
 
 **Check:**
 1. LoRA folder path is correct (absolute path)
-2. `.safetensors` files exist in the folder
+2. `.safetensors`, `.pt` or `.ckpt` files exist in the folder
 3. `include_subfolders` setting if LoRAs are in subfolders
 4. Console for error messages
 

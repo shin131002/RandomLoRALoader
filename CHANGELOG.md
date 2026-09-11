@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.3.0] - 2026-09-11
+
+### Fixed
+
+#### Symlinked folders were skipped during scanning
+- Folder scans now follow symbolic links, matching ComfyUI's own behaviour (`folder_paths.recursive_search` uses `followlinks=True`)
+- Previously, a subfolder that was a symlink was skipped entirely, so LoRAs behind a link never appeared as candidates — even though they showed up fine in ComfyUI's native LoRA dropdown
+- Affects all three nodes:
+  - **Random LoRA Loader**: `glob.glob("**/*.safetensors")` replaced with `os.walk(followlinks=True)` (glob's `**` does not descend into symlinked directories)
+  - **Filtered Random LoRA Loader** / **Filtered Random LoRA Loader (LBW)**: `os.walk()` now passes `followlinks=True`
+- Symlink loops are detected via a `realpath` set and skipped, so a cyclic link cannot hang the scan
+- A folder reachable through two different links is no longer scanned twice
+
+#### Redundant error logging on non-safetensors LoRAs
+- `_load_embedded_metadata` now returns early for `.pt` / `.ckpt` files instead of calling `safe_open`, which can only read `.safetensors`
+- Previously every selected `.pt` / `.ckpt` produced a spurious "metadata read error" log line
+- Trigger words for these formats still come from `.metadata.json` / `.info` sidecar files as before
+
+### Changed
+
+#### Seed reproducibility — candidate list is now sorted
+- The candidate file list is sorted before random selection
+- Previously the order came straight from the filesystem, so **the same seed could produce different selections on different machines**. Sorting makes a seed reproducible across environments
+- ⚠️ Because the ordering changed, an existing workflow may select a different set of LoRAs after upgrading even with a fixed seed. If a result you were relying on changes, re-roll or re-pick the seed
+
+#### Random LoRA Loader: extension support aligned with the Filtered nodes
+- Now scans `.safetensors`, `.pt`, and `.ckpt` (previously `.safetensors` only)
+- All three nodes now return an identical candidate list for the same folder
+- Extension matching is case-insensitive, so `.SAFETENSORS` is picked up on Linux as well (glob was case-sensitive there)
+
+---
+
 ## [1.2.0] - 2026-01-13
 
 ### Added

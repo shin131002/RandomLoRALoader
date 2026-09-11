@@ -222,7 +222,7 @@ class RandomLoRALoader:
     
     def _find_lora_files(self, folder_path, include_subfolders):
         """
-        指定フォルダ内のLoRAファイル（.safetensors）を検索
+        指定フォルダ内のLoRAファイル（.safetensors / .pt / .ckpt）を検索
         
         Args:
             folder_path: 検索対象フォルダの絶対パス
@@ -235,9 +235,41 @@ class RandomLoRALoader:
             print(f"[RandomLoRALoader] フォルダが存在しません: {folder_path}")
             return []
         
-        pattern = "**/*.safetensors" if include_subfolders else "*.safetensors"
-        lora_files = glob.glob(os.path.join(folder_path, pattern), recursive=include_subfolders)
-        
+        lora_files = []
+        # Filtered版と対象拡張子を揃えている
+        extensions = ['.safetensors', '.pt', '.ckpt']
+
+        if include_subfolders:
+            # glob の "**" はシンボリックリンクのディレクトリを辿らないため
+            # os.walk(followlinks=True) に置き換えている。ComfyUI本体の
+            # フォルダスキャン (folder_paths.recursive_search) と挙動を揃える
+            # ためで、これがないとリンク先にしか存在しないLoRAが、
+            # ComfyUIネイティブのドロップダウンには出るのにここでは
+            # 候補に入らない、という食い違いが起きる。
+            #
+            # realpathの集合はリンクを辿る代償。リンクが循環している場合に
+            # スキャンが無限ループするのを防ぎ、同じフォルダに2本のリンクが
+            # 張られている場合の二重スキャンも抑止する。
+            seen_dirs = set()
+            for root, dirs, files in os.walk(folder_path, followlinks=True):
+                real_root = os.path.realpath(root)
+                if real_root in seen_dirs:
+                    dirs[:] = []
+                    continue
+                seen_dirs.add(real_root)
+                for file in files:
+                    if any(file.lower().endswith(ext) for ext in extensions):
+                        lora_files.append(os.path.join(root, file))
+        else:
+            for file in os.listdir(folder_path):
+                file_path = os.path.join(folder_path, file)
+                if os.path.isfile(file_path) and any(file.lower().endswith(ext) for ext in extensions):
+                    lora_files.append(file_path)
+
+        # ソートして返す。以前は列挙順がファイルシステム任せだったため、
+        # 同じシードでもマシンが変われば選ばれるLoRAが違っていた。
+        # ソートすることでシード指定が環境をまたいで再現するようになる。
+        lora_files = sorted(lora_files)
         print(f"[RandomLoRALoader] 検出されたLoRA数: {len(lora_files)}")
         return lora_files
     
@@ -389,12 +421,12 @@ class RandomLoRALoader:
         3. LoRA本体ファイルの埋め込みメタデータ
         
         Args:
-            lora_path: LoRAファイルパス (.safetensors)
+            lora_path: LoRAファイルパス (.safetensors / .pt / .ckpt)
         
         Returns:
             dict: JSONデータ（読み込み失敗時はNone）
         """
-        # .safetensorsを除いたファイル名を取得
+        # 拡張子を除いたファイル名を取得
         base_name = os.path.splitext(lora_path)[0]
         
         # 優先順位1: .metadata.json (ComfyUI Lora Manager)
@@ -435,6 +467,11 @@ class RandomLoRALoader:
             dict: メタデータ（読み込み失敗時はNone）
         """
         if not SAFETENSORS_AVAILABLE:
+            return None
+        
+        # safe_open は .safetensors しか読めない。.pt/.ckpt も候補に含むように
+        # なったため、ここで弾いておかないと選択のたびにエラーログが出る
+        if not lora_path.lower().endswith(".safetensors"):
             return None
         
         if not os.path.exists(lora_path):

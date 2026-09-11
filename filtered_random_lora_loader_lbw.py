@@ -323,7 +323,22 @@ class FilteredRandomLoRALoaderLBW:
         extensions = ['.safetensors', '.pt', '.ckpt']
         
         if include_subfolders:
-            for root, dirs, files in os.walk(folder_path):
+            # followlinks=True はComfyUI本体のフォルダスキャン
+            # (folder_paths.recursive_search) と同じ挙動。これがないと
+            # シンボリックリンクのサブフォルダが丸ごとスキップされ、
+            # ComfyUIネイティブのLoRAドロップダウンには出てくるのに
+            # ここでは候補に入らない、という食い違いが起きる。
+            #
+            # realpathの集合はリンクを辿る代償。リンクが循環している場合に
+            # スキャンが無限ループするのを防ぎ、同じフォルダに2本のリンクが
+            # 張られている場合の二重スキャンも抑止する。
+            seen_dirs = set()
+            for root, dirs, files in os.walk(folder_path, followlinks=True):
+                real_root = os.path.realpath(root)
+                if real_root in seen_dirs:
+                    dirs[:] = []
+                    continue
+                seen_dirs.add(real_root)
                 for file in files:
                     if any(file.lower().endswith(ext) for ext in extensions):
                         lora_files.append(os.path.join(root, file))
@@ -333,7 +348,10 @@ class FilteredRandomLoRALoaderLBW:
                 if os.path.isfile(file_path) and any(file.lower().endswith(ext) for ext in extensions):
                     lora_files.append(file_path)
         
-        return lora_files
+        # ソートして返す。以前は列挙順がファイルシステム任せだったため、
+        # 同じシードでもマシンが変われば選ばれるLoRAが違っていた。
+        # ソートすることでシード指定が環境をまたいで再現するようになる。
+        return sorted(lora_files)
     
     def _parse_keywords(self, keyword_filter):
         """
@@ -564,6 +582,11 @@ class FilteredRandomLoRALoaderLBW:
     
     def _load_embedded_metadata(self, lora_path):
         """LoRAファイルから埋め込みメタデータを読み込み（Civitai形式に変換）"""
+        # safe_open は .safetensors しか読めない。候補には .pt/.ckpt も
+        # 含まれるため、ここで弾いておかないと選択のたびに無駄な例外が出る
+        if not lora_path.lower().endswith(".safetensors"):
+            return None
+        
         try:
             from safetensors.torch import safe_open
             

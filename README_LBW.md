@@ -208,6 +208,8 @@ Detected: SDXL (requires 20)
 - `model_strength`: LoRA strength for MODEL (e.g., "1.0" or "0.6-0.9")
 - `clip_strength`: LoRA strength for CLIP (e.g., "1.0" or "0.6-0.9")
 
+> Folder scanning behaviour (supported extensions, symbolic links, sorted candidate order) is shared with the other nodes — see [Folder Scanning](README.md#folder-scanning) in the main README.
+
 #### **Keyword Filter**
 - `keyword_filter`: Space-separated keywords (e.g., `style anime` or `"anime style" red`)
 - `filter_mode`: AND / OR
