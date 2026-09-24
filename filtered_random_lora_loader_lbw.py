@@ -157,8 +157,13 @@ class FilteredRandomLoRALoaderLBW:
             }
         }
     
-    RETURN_TYPES = ("MODEL", "CLIP", "STRING", "STRING", "CONDITIONING", "CONDITIONING", "IMAGE")
-    RETURN_NAMES = ("MODEL", "CLIP", "positive_text", "negative_text", "positive", "negative", "preview")
+    RETURN_TYPES = ("MODEL", "CLIP", "STRING", "STRING", "CONDITIONING", "CONDITIONING", "IMAGE", "STRING")
+    # 0〜6番はv1.4.0以前と位置・型とも同じ（保存済みワークフローは出力を番号で接続するため）。
+    # v1.4.0での変更:
+    #   positive_text (2番) … <lora:...> を含まない。positive (CONDITIONING) にエンコード
+    #                         される文字列そのもの
+    #   lora_text     (7番) … 以前の positive_text の内容（<lora:...> 付き）。記録用
+    RETURN_NAMES = ("MODEL", "CLIP", "positive_text", "negative_text", "positive", "negative", "preview", "lora_text")
     FUNCTION = "load_loras"
     CATEGORY = "loaders"
     
@@ -724,8 +729,13 @@ class FilteredRandomLoRALoaderLBW:
     
     def _remove_lora_syntax(self, text):
         """プロンプトからLoRA構文を削除"""
-        pattern = r'<lora:[^>]+>'
-        return re.sub(pattern, '', text)
+        if not text:
+            return text
+        text = re.sub(r'<lora:[^>]+>', '', text)
+        # v1.4.0: 構文を消した跡に残る ", ," を詰める（以前はそのままエンコードしていた）。
+        # positive_text 出力として表に出るようになったため、3フォルダ版と同じ後処理に揃えた
+        text = re.sub(r',(\s*,)+', ',', text)
+        return text.strip().strip(',').strip()
     
     def _load_preview_image_as_tensor(self, lora_path):
         """
@@ -1284,12 +1294,12 @@ class FilteredRandomLoRALoaderLBW:
     def _generate_outputs(self, model, clip, final_positive, final_negative,
                          token_normalization, weight_interpretation, preview_batch):
         """CONDITIONING生成と出力"""
+        # LoRA構文を削除してクリーンなプロンプトにする。clean_positive は positive_text
+        # 出力にもなるので、エラー時の戻り値でも使えるよう try の外で作る
+        clean_positive = self._remove_lora_syntax(final_positive) if final_positive else ""
+        clean_negative = self._remove_lora_syntax(final_negative) if final_negative else ""
         try:
             from nodes import CLIPTextEncode
-            
-            # LoRA構文を削除してクリーンなプロンプトにする
-            clean_positive = self._remove_lora_syntax(final_positive) if final_positive else ""
-            clean_negative = self._remove_lora_syntax(final_negative) if final_negative else ""
             
             # CONDITIONING生成
             positive_conditioning = CLIPTextEncode().encode(
@@ -1302,8 +1312,9 @@ class FilteredRandomLoRALoaderLBW:
                 text=clean_negative
             )[0]
             
-            return (model, clip, final_positive, final_negative, 
-                   positive_conditioning, negative_conditioning, preview_batch)
+            # positive_text = エンコードした文字列そのもの / lora_text = <lora:...> 付き（旧 positive_text）
+            return (model, clip, clean_positive, final_negative,
+                    positive_conditioning, negative_conditioning, preview_batch, final_positive)
         except Exception as e:
             print(f"[FilteredRandomLoRALoaderLBW] Error generating outputs: {e}")
             # エラー時は黒画像
@@ -1312,4 +1323,4 @@ class FilteredRandomLoRALoaderLBW:
                 black_image = torch.zeros((1, 1240, 1240, 3), dtype=torch.float32)
             except:
                 black_image = None
-            return (model, clip, final_positive, final_negative, None, None, black_image)
+            return (model, clip, clean_positive, final_negative, None, None, black_image, final_positive)

@@ -1,7 +1,7 @@
 [project]
 name = "randomloraloader"
 description = "Randomly select and apply LoRAs with keyword filtering, LoRA Block Weight support, preview images, and multiple folder support for ComfyUI"
-version = "1.3.0"
+version = "1.4.0"
 license = {file = "LICENSE"}
 
 classifiers = [

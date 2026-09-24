@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.4.0] - 2026-09-24
+
+### Changed
+
+#### ⚠️ `positive_text` no longer contains LoRA syntax; new `lora_text` output
+- `positive_text` is now the positive prompt **without** `<lora:...>` tags — exactly what is encoded into the `positive` CONDITIONING output — so it can be fed straight into a text encoder
+- The previous content, tags included, now comes from a new **`lora_text`** output, added as the **last** slot
+- All other outputs keep their positions and types, so existing workflow connections stay valid (ComfyUI connects outputs by position)
+- Action for existing workflows:
+  - `positive_text` fed a text encoder: nothing to do
+  - `positive_text` was used to record the LoRA syntax (saved prompts, metadata): reconnect that link to `lora_text`
+- Applies to all three nodes (Random LoRA Loader, Filtered Random LoRA Loader, Filtered Random LoRA Loader (LBW))
+
+#### ⚠️ Filtered nodes: cleaner encoded prompt
+- Filtered Random LoRA Loader / (LBW) removed `<lora:...>` tags before encoding but left the separators behind, so the positive conditioning was encoded from text like `masterpiece, , trig_a, , , trig_c`
+- Runs of commas and leading/trailing commas are now tidied before encoding, matching the 3-folder node. This applies to the negative prompt too (e.g. a trailing `, ` is no longer encoded)
+- Because the encoded text changes, **results with the same seed may differ from 1.3.0 and earlier**. Keep using an earlier version if identical results are required
+
+### Fixed
+- Random LoRA Loader: a run of three or more commas left after removing tags from the additional prompt was only partly collapsed
+
+---
+
 ## [1.3.0] - 2026-09-11
 
 ### Fixed

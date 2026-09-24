@@ -78,7 +78,7 @@ Advanced node with LoRA Block Weight (LBW) support for precise effect control.
   - `json_sample_prompt`: Randomly retrieve sample prompts
   - `metadata`: Read directly from embedded metadata
 - **Sample Prompt Optimization**: Automatically remove LoRA syntax from samples and apply node-configured strength
-- **Dual Text Outputs**: Separate positive_text and negative_text outputs
+- **Text Outputs**: `positive_text` / `negative_text`, plus `lora_text` carrying the LoRA syntax (v1.4.0)
 - **ComfyUI Standard Seed Control**: Supports fixed/randomize/increment/decrement
 - **Wildcard Encode Integration**: Works seamlessly with Wildcard Encode (Inspire)
 - **LoRA Syntax Auto-Removal**: Cleans up LoRA syntax in additional_prompt to prevent noise
@@ -176,6 +176,7 @@ Or manually delete the RandomLoRALoader folder and restart ComfyUI.
    - `MODEL` / `CLIP`: Connect to KSampler
    - `positive` / `negative`: Connect to Set Conditioning or KSampler
    - `positive_text` / `negative_text`: Connect to Show Text for verification (recommended)
+   - `lora_text`: Connect to Show Text or a prompt/metadata saving node to record which LoRAs were picked
 
 ### Wildcard Encode Integration (Recommended)
 
@@ -508,23 +509,33 @@ All nodes provide the following outputs:
 | `CLIP` | CLIP | CLIP with LoRAs applied |
 | `positive` | CONDITIONING | Positive conditioning (LoRA syntax removed) |
 | `negative` | CONDITIONING | Negative conditioning |
-| `positive_text` | STRING | Full positive prompt text with LoRA syntax |
+| `positive_text` | STRING | Positive prompt text **without** LoRA syntax — exactly what is encoded into `positive` (v1.4.0) |
 | `negative_text` | STRING | Full negative prompt text |
 | `preview` | IMAGE | Batch of preview images for selected LoRAs (v1.1.0) |
+| `lora_text` | STRING | Positive prompt text **with** LoRA syntax (the former `positive_text` content, v1.4.0) |
+
+> ⚠️ **Output changes in v1.4.0**
+>
+> `positive_text` no longer contains `<lora:...>` tags; the previous content now comes from the new `lora_text` output (last slot). All other outputs keep their positions and types, so existing connections stay valid.
+>
+> - `positive_text` fed a text encoder: no rewiring needed. The tags are no longer read as text
+> - `positive_text` was used to record the LoRA syntax (saved prompts, metadata): reconnect that to `lora_text`
+>
+> The Filtered nodes also now tidy the stray `, ,` left behind after removing tags (and leading/trailing commas) before encoding, as the 3-folder node already did. Because the encoded text changes, **results with the same seed may differ from earlier versions**. If you need identical results to an earlier version, keep using that version.
 
 ### Text Output Format
 
-**positive_text example:**
+**lora_text example:**
 ```
 <lora:style_anime:0.8:0.8>, <lora:character_alice:1.0:1.0>, anime style, alice, blonde hair, 1girl, beautiful
 ```
 
-**LBW node positive_text example:**
+**LBW node lora_text example:**
 ```
 <lora:style_anime:0.8:0.8:lbw=1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1>, anime style, 1girl, beautiful
 ```
 
-**positive (CONDITIONING) content:**
+**positive_text / positive (CONDITIONING) content:**
 ```
 anime style, alice, blonde hair, 1girl, beautiful
 (LoRA syntax removed for clean prompt)

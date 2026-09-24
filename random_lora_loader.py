@@ -215,8 +215,13 @@ class RandomLoRALoader:
             }
         }
     
-    RETURN_TYPES = ("MODEL", "CLIP", "STRING", "STRING", "CONDITIONING", "CONDITIONING", "IMAGE")
-    RETURN_NAMES = ("MODEL", "CLIP", "positive_text", "negative_text", "positive", "negative", "preview")
+    RETURN_TYPES = ("MODEL", "CLIP", "STRING", "STRING", "CONDITIONING", "CONDITIONING", "IMAGE", "STRING")
+    # 0〜6番はv1.4.0以前と位置・型とも同じ（保存済みワークフローは出力を番号で接続するため）。
+    # v1.4.0での変更:
+    #   positive_text (2番) … <lora:...> を含まない。positive (CONDITIONING) にエンコード
+    #                         される文字列そのもの
+    #   lora_text     (7番) … 以前の positive_text の内容（<lora:...> 付き）。記録用
+    RETURN_NAMES = ("MODEL", "CLIP", "positive_text", "negative_text", "positive", "negative", "preview", "lora_text")
     FUNCTION = "load_random_loras"
     CATEGORY = "loaders"
     
@@ -777,7 +782,7 @@ class RandomLoRALoader:
         text = re.sub(r'<lora:[^>]+>', '', text)
         
         # 連続カンマを整理
-        text = re.sub(r',\s*,', ',', text)
+        text = re.sub(r',(\s*,)+', ',', text)  # 3つ以上連続しても1回で詰める
         
         # 行頭・行末の空白とカンマを削除
         text = text.strip().strip(',').strip()
@@ -1123,7 +1128,7 @@ class RandomLoRALoader:
         メイン処理：ランダムLoRA選択・適用（3グループ対応）
         
         Returns:
-            tuple: (MODEL, CLIP, positive_text_output, negative_text_output, positive_conditioning, negative_conditioning)
+            tuple: (MODEL, CLIP, lora_text_output, negative_text_output, positive_conditioning, negative_conditioning)
         """
         # seedをそのまま使用（ComfyUIのcontrol_before_generateで制御される）
         print(f"[RandomLoRALoader] 使用seed: {seed}")
@@ -1223,18 +1228,18 @@ class RandomLoRALoader:
                 additional_with_comma += ','
             if all_text_parts:
                 # LoRAがある場合: 追加プロンプト + LoRA情報
-                positive_text_output = additional_with_comma + "\n" + "\n".join(all_text_parts)
+                lora_text_output = additional_with_comma + "\n" + "\n".join(all_text_parts)
             else:
                 # LoRAがない場合: 追加プロンプトのみ（末尾カンマなし）
-                positive_text_output = additional_prompt_positive.strip()
+                lora_text_output = additional_prompt_positive.strip()
         else:
             # 追加プロンプトなし
             if all_text_parts:
                 # LoRAのみ
-                positive_text_output = "\n".join(all_text_parts)
+                lora_text_output = "\n".join(all_text_parts)
             else:
                 # 何もない
-                positive_text_output = ""
+                lora_text_output = ""
         
         # negativeテキスト出力
         # 1. json_sample_promptからのnegative
@@ -1283,4 +1288,6 @@ class RandomLoRALoader:
         # プレビュー画像バッチ生成
         preview_batch = self._generate_preview_batch(preview_images)
         
-        return (model, clip, positive_text_output, negative_text_output, positive_conditioning, negative_conditioning, preview_batch)
+        # positive_text = positive にエンコードした文字列そのもの（<lora:...> なし）
+        return (model, clip, positive_text, negative_text_output, positive_conditioning,
+                negative_conditioning, preview_batch, lora_text_output)

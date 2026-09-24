@@ -78,7 +78,7 @@ LoRAブロックウェイト（LBW）対応の高度なノード。精密な効�
   - `json_sample_prompt`: 作例プロンプトをランダムに取得
   - `metadata`: 埋め込みメタデータから直接読み込み
 - **作例プロンプト最適化**: LoRA構文を自動除去し、ノード設定の強度を適用
-- **デュアルテキスト出力**: positive_textとnegative_textを分離出力
+- **テキスト出力**: `positive_text` / `negative_text`に加え、LoRA構文付きの`lora_text`（v1.4.0）
 - **ComfyUI標準シード制御**: 固定/ランダム/増分/減分に対応
 - **Wildcard Encode統合**: Wildcard Encode（Inspire）とシームレスに連携
 - **LoRA構文自動除去**: additional_prompt内のLoRA構文を自動削除
@@ -176,6 +176,7 @@ rmdir /s RandomLoRALoader
    - `MODEL` / `CLIP`: KSamplerに接続
    - `positive` / `negative`: Set ConditioningまたはKSamplerに接続
    - `positive_text` / `negative_text`: Show Textに接続して確認（推奨）
+   - `lora_text`: Show Textやプロンプト・メタデータ保存系のノードに接続して、選ばれたLoRAを記録
 
 ### Wildcard Encode連携（推奨）
 
@@ -508,23 +509,33 @@ JSONメタデータから作例プロンプトを取得。
 | `CLIP` | CLIP | LoRA適用済みCLIP |
 | `positive` | CONDITIONING | ポジティブコンディショニング（LoRA構文除去） |
 | `negative` | CONDITIONING | ネガティブコンディショニング |
-| `positive_text` | STRING | LoRA構文付き完全ポジティブプロンプトテキスト |
+| `positive_text` | STRING | LoRA構文を**含まない**ポジティブプロンプトテキスト。`positive`にエンコードされる内容そのもの（v1.4.0） |
 | `negative_text` | STRING | 完全ネガティブプロンプトテキスト |
 | `preview` | IMAGE | 選択されたLoRAのプレビュー画像バッチ（v1.1.0） |
+| `lora_text` | STRING | LoRA構文を**含む**ポジティブプロンプトテキスト（旧`positive_text`の内容、v1.4.0） |
+
+> ⚠️ **v1.4.0での出力の変更**
+>
+> `positive_text`は`<lora:...>`を含まなくなりました。以前の内容は新しい出力`lora_text`（末尾）から出ます。他の出力は位置も型も変わっていないので、既存の接続はそのまま使えます。
+>
+> - `positive_text`をテキストエンコーダーに繋いでいた場合：つなぎ直しは不要です。`<lora:...>`が文字として読まれなくなります
+> - `positive_text`をLoRA構文の記録（プロンプトの保存やメタデータ）に使っていた場合：`lora_text`につなぎ直してください
+>
+> あわせてFilteredノードでも、3フォルダ版と同様に、構文を除去した跡に残る`, ,`や前後のカンマを整理してからエンコードするようにしました。エンコードされる内容が変わるため、**同じシードでも以前のバージョンと生成結果が変わる場合があります**。以前と同じ結果が必要な場合は、以前のバージョンをお使いください。
 
 ### テキスト出力形式
 
-**positive_text例:**
+**lora_text例:**
 ```
 <lora:style_anime:0.8:0.8>, <lora:character_alice:1.0:1.0>, anime style, alice, blonde hair, 1girl, beautiful
 ```
 
-**LBWノードのpositive_text例:**
+**LBWノードのlora_text例:**
 ```
 <lora:style_anime:0.8:0.8:lbw=1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1>, anime style, 1girl, beautiful
 ```
 
-**positive（CONDITIONING）内容:**
+**positive_text / positive（CONDITIONING）内容:**
 ```
 anime style, alice, blonde hair, 1girl, beautiful
 （クリーンなプロンプトのためLoRA構文除去）
