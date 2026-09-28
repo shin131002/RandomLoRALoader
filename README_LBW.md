@@ -16,7 +16,8 @@ Filtered Random LoRA Loader (LBW) is the Filtered Random LoRA Loader with LoRA B
 
 ### **Core Features (shared with Filtered Random LoRA Loader)**
 - ✅ Random LoRA selection from a single folder
-- ✅ Keyword filtering (AND/OR modes)
+- ✅ Keyword filtering (AND/OR/OFF modes)
+- ✅ Output of the matched keywords (`keyword`, v1.5.0)
 - ✅ Metadata search (filename or embedded metadata)
 - ✅ Preview images (static/animated/video support)
 - ✅ Trigger word extraction
@@ -285,7 +286,7 @@ Detected: SDXL (requires 20)
 
 #### **Keyword Filter**
 - `keyword_filter`: Space-separated keywords (e.g., `style anime` or `"anime style" red`)
-- `filter_mode`: AND / OR
+- `filter_mode`: AND / OR / OFF (OFF turns the filter off but keeps the keywords, v1.5.0)
 - `search_in_metadata`: Search in JSON/embedded metadata (slower)
 
 #### **LBW Settings**
@@ -315,6 +316,10 @@ When LBW is applied, the `lora_text` output (`positive_text` before v1.4.0) incl
 ```
 
 **Note:** The LBW is applied internally to the MODEL. The syntax in `lora_text` is for reference/re-use with other nodes.
+
+### **Keyword Output (v1.5.0)**
+
+Outputs the keywords the selected LoRA actually matched, joined with `_` (last output). AND mode gives all keywords (`aaa bbb` → `aaa_bbb`); OR mode gives the one that matched (`aaa` or `bbb`). Spaces inside a phrase also become `_` (`"aaa bbb" ccc` → `aaa_bbb_ccc`). Empty when `filter_mode` is OFF. See [Keyword Output in README.md](README.md#keyword-output-v150) for details.
 
 ---
 

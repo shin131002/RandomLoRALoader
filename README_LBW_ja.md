@@ -16,7 +16,8 @@ Filtered Random LoRA Loader (LBW) は、Filtered Random LoRA LoaderにLoRAブロ
 
 ### **基本機能（Filtered Random LoRA Loaderと共通）**
 - ✅ 1つのフォルダからLoRAをランダム選択
-- ✅ キーワードフィルタ（AND/ORモード）
+- ✅ キーワードフィルタ（AND/OR/OFFモード）
+- ✅ マッチしたキーワードの出力（`keyword`、v1.5.0）
 - ✅ メタデータ検索（ファイル名または埋め込みメタデータ）
 - ✅ プレビュー画像（静止画・アニメーション画像・動画に対応）
 - ✅ トリガーワードの取得
@@ -285,7 +286,7 @@ SD1.5検出 → 17要素のウェイトを使用
 
 #### **キーワードフィルタ**
 - `keyword_filter`: スペース区切りのキーワード（例: `style anime` や `"anime style" red`）
-- `filter_mode`: AND / OR
+- `filter_mode`: AND / OR / OFF（OFFはキーワードを残したままフィルタを無効にする、v1.5.0）
 - `search_in_metadata`: JSONや埋め込みメタデータも検索対象にする（遅くなります）
 
 #### **LBW設定**
@@ -315,6 +316,10 @@ LBWを適用した場合、`lora_text`出力（v1.4.0より前は`positive_text`
 ```
 
 **注:** LBWはノード内部でMODELに適用済みです。`lora_text`の構文は、記録や他のノードでの再利用のためのものです。
+
+### **keyword出力（v1.5.0）**
+
+選ばれたLoRAが実際にマッチしたキーワードを`_`で連結して出力します（出力の末尾）。ANDモードは全キーワード（`aaa bbb` → `aaa_bbb`）、ORモードはマッチしたもの（`aaa`または`bbb`）です。フレーズ内のスペースも`_`になります（`"aaa bbb" ccc` → `aaa_bbb_ccc`）。`filter_mode`がOFFのときは空です。詳細は[README_ja.md の「keyword出力」](README_ja.md#keyword出力v150)を参照してください。
 
 ---
 

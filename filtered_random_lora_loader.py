@@ -79,7 +79,9 @@ class FilteredRandomLoRALoader:
                     "multiline": False,
                     "placeholder": "Keywords (space-separated, e.g., 'style anime' or \"anime style\" red)"
                 }),
-                "filter_mode": (["AND", "OR"], {
+                # OFF（v1.5.0）: キーワードを残したままフィルタだけ無効にする。末尾に追加。
+                # 保存済みワークフローは値（"AND"/"OR"）で保存されているので影響なし
+                "filter_mode": (["AND", "OR", "OFF"], {
                     "default": "AND"
                 }),
                 "search_in_metadata": ("BOOLEAN", {
@@ -120,13 +122,16 @@ class FilteredRandomLoRALoader:
             }
         }
     
-    RETURN_TYPES = ("MODEL", "CLIP", "STRING", "STRING", "CONDITIONING", "CONDITIONING", "IMAGE", "STRING")
+    RETURN_TYPES = ("MODEL", "CLIP", "STRING", "STRING", "CONDITIONING", "CONDITIONING", "IMAGE", "STRING", "STRING")
     # 0〜6番はv1.4.0以前と位置・型とも同じ（保存済みワークフローは出力を番号で接続するため）。
     # v1.4.0での変更:
     #   positive_text (2番) … <lora:...> を含まない。positive (CONDITIONING) にエンコード
     #                         される文字列そのもの
     #   lora_text     (7番) … 以前の positive_text の内容（<lora:...> 付き）。記録用
-    RETURN_NAMES = ("MODEL", "CLIP", "positive_text", "negative_text", "positive", "negative", "preview", "lora_text")
+    # v1.5.0での追加:
+    #   keyword       (8番) … 選ばれたLoRAが実際にマッチしたキーワードを "_" で連結したもの
+    #                         （_build_keyword_text 参照）。新しいピンは常に末尾に足す
+    RETURN_NAMES = ("MODEL", "CLIP", "positive_text", "negative_text", "positive", "negative", "preview", "lora_text", "keyword")
     FUNCTION = "load_loras"
     CATEGORY = "loaders"
     
@@ -269,8 +274,14 @@ class FilteredRandomLoRALoader:
         # プレビュー画像バッチ生成
         preview_batch = self._generate_preview_batch(preview_images)
         
+        # keyword 出力（選ばれたLoRAが実際にマッチしたキーワード）
+        keyword_text = self._build_keyword_text(selected_loras, keyword_filter, filter_mode, search_in_metadata)
+        if keyword_text:
+            print(f"[FilteredRandomLoRALoader] Matched keyword: {keyword_text}")
+        
         return self._generate_outputs(model, clip, final_positive, final_negative,
-                                     token_normalization, weight_interpretation, preview_batch)
+                                     token_normalization, weight_interpretation, preview_batch,
+                                     keyword_text)
     
     def _find_lora_files(self, folder_path, include_subfolders):
         """フォルダ内のLoRAファイルを検索"""
@@ -312,31 +323,69 @@ class FilteredRandomLoRALoader:
         # ソートすることでシード指定が環境をまたいで再現するようになる。
         return sorted(lora_files)
     
-    def _parse_keywords(self, keyword_filter):
+    def _split_keywords(self, keyword_filter):
         """
-        キーワードをパース（スペース区切り、"..."でフレーズ対応）
+        キーワードを入力どおりの大文字小文字で分割（スペース区切り、"..."でフレーズ対応）
         
         例:
-          "anime style" → ["anime", "style"]
+          anime style → ["anime", "style"]
           "anime style" red → ["anime style", "red"]
           "anime style" "vibrant colors" → ["anime style", "vibrant colors"]
         """
         if not keyword_filter.strip():
             return []
         
-        import re
-        
         # ダブルクォート内のフレーズを抽出
         pattern = r'"([^"]+)"|(\S+)'
         matches = re.findall(pattern, keyword_filter)
         
         # (quoted, unquoted) のタプルから値を取得
-        keywords = [m[0] if m[0] else m[1] for m in matches]
+        return [m[0] if m[0] else m[1] for m in matches if m[0] or m[1]]
+    
+    def _parse_keywords(self, keyword_filter):
+        """フィルタ用のキーワード（大文字小文字を区別しないので小文字化）"""
+        return [kw.lower() for kw in self._split_keywords(keyword_filter)]
+    
+    def _build_keyword_text(self, selected_loras, keyword_filter, filter_mode, search_in_metadata):
+        """
+        keyword 出力用の文字列。選ばれたLoRAが実際にマッチしたキーワードを返す
         
-        # 小文字化
-        keywords = [kw.lower() for kw in keywords if kw]
+        キーワードは入力順・重複なしで "_" 連結。フレーズ内のスペースも "_" にする
+        （"aaa bbb" → aaa_bbb）。大文字小文字は入力のまま。マッチ判定の対象は
+        _filter_lora_files と同じ（ファイル名、search_in_metadata がONならメタデータも）。
         
-        return keywords
+          AND: 選ばれたLoRAは全キーワードにマッチしているので全部出る
+               （aaa bbb → aaa_bbb、"aaa bbb" ccc → aaa_bbb_ccc）
+          OR : ヒットしたものだけ出る（aaa または bbb）。1つのLoRAが両方を含めば
+               aaa_bbb、num_loras が2以上なら選ばれた全LoRAのヒットをまとめる
+        filter_mode が OFF、keyword_filter が空、LoRAが1つも選ばれなかった場合は空文字。
+        """
+        if filter_mode == "OFF":
+            return ""
+        keywords = self._split_keywords(keyword_filter)
+        if not keywords or not selected_loras:
+            return ""
+        
+        targets = []
+        for lora_path in dict.fromkeys(selected_loras):
+            target = os.path.splitext(os.path.basename(lora_path))[0].lower()
+            if search_in_metadata:
+                metadata_keywords = self._get_metadata_keywords(lora_path)
+                if metadata_keywords:
+                    target = f"{target} {metadata_keywords}"
+            targets.append(target)
+        
+        hits, seen = [], set()
+        for kw in keywords:
+            key = kw.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            if any(key in t for t in targets):
+                label = re.sub(r"\s+", "_", kw.strip())
+                if label:
+                    hits.append(label)
+        return "_".join(hits)
     
     def _unique_by_filename(self, lora_files):
         """
@@ -371,7 +420,7 @@ class FilteredRandomLoRALoader:
     
     def _filter_lora_files(self, lora_files, keyword_filter, filter_mode="OR", search_in_metadata=False):
         """キーワードでLoRAファイルをフィルタリング"""
-        if not keyword_filter.strip():
+        if filter_mode == "OFF" or not keyword_filter.strip():
             return lora_files  # フィルタなし = 全ファイル
         
         # キーワードをパース（スペース区切り、"..."でフレーズ対応）
@@ -1005,7 +1054,8 @@ class FilteredRandomLoRALoader:
         return preview_batch
     
     def _generate_outputs(self, model, clip, final_positive, final_negative,
-                         token_normalization, weight_interpretation, preview_batch):
+                         token_normalization, weight_interpretation, preview_batch,
+                         keyword_text=""):
         """CONDITIONING生成と出力"""
         # LoRA構文を削除してクリーンなプロンプトにする。clean_positive は positive_text
         # 出力にもなるので、エラー時の戻り値でも使えるよう try の外で作る
@@ -1027,7 +1077,8 @@ class FilteredRandomLoRALoader:
             
             # positive_text = エンコードした文字列そのもの / lora_text = <lora:...> 付き（旧 positive_text）
             return (model, clip, clean_positive, final_negative,
-                    positive_conditioning, negative_conditioning, preview_batch, final_positive)
+                    positive_conditioning, negative_conditioning, preview_batch, final_positive,
+                    keyword_text)
         except Exception as e:
             print(f"[FilteredRandomLoRALoader] Error generating outputs: {e}")
             # エラー時は黒画像
@@ -1036,7 +1087,8 @@ class FilteredRandomLoRALoader:
                 black_image = torch.zeros((1, 1240, 1240, 3), dtype=torch.float32)
             except:
                 black_image = None
-            return (model, clip, clean_positive, final_negative, None, None, black_image, final_positive)
+            return (model, clip, clean_positive, final_negative, None, None, black_image, final_positive,
+                    keyword_text)
 
 
 NODE_CLASS_MAPPINGS = {

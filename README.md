@@ -88,9 +88,10 @@ Advanced node with LoRA Block Weight (LBW) support for precise effect control.
 ### Filtered Nodes (Filtered & LBW)
 
 - **Keyword Filtering**: Space-separated keywords with phrase support
-- **AND/OR Modes**: Flexible filtering logic
+- **AND/OR/OFF Modes**: Flexible filtering logic (OFF: v1.5.0)
 - **Metadata Search**: Search in filenames or embedded metadata
 - **Fast Caching**: Instant metadata access after first load
+- **Keyword Output**: Outputs the keywords the selected LoRA actually matched (v1.5.0)
 
 ### LBW Node Only 🆕
 
@@ -513,10 +514,11 @@ All nodes provide the following outputs:
 | `negative_text` | STRING | Full negative prompt text |
 | `preview` | IMAGE | Batch of preview images for selected LoRAs (v1.1.0) |
 | `lora_text` | STRING | Positive prompt text **with** LoRA syntax (the former `positive_text` content, v1.4.0) |
+| `keyword` | STRING | **Filtered nodes only.** The keywords the selected LoRA actually matched (v1.5.0). See [Keyword Output](#keyword-output-v150) |
 
 > ⚠️ **Output changes in v1.4.0**
 >
-> `positive_text` no longer contains `<lora:...>` tags; the previous content now comes from the new `lora_text` output (last slot). All other outputs keep their positions and types, so existing connections stay valid.
+> `positive_text` no longer contains `<lora:...>` tags; the previous content now comes from the new `lora_text` output (added at the end). All other outputs keep their positions and types, so existing connections stay valid.
 >
 > - `positive_text` fed a text encoder: no rewiring needed. The tags are no longer read as text
 > - `positive_text` was used to record the LoRA syntax (saved prompts, metadata): reconnect that to `lora_text`
@@ -566,7 +568,7 @@ anime style, alice, blonde hair, 1girl, beautiful
 ### Key Features
 
 - **Keyword Filtering**: Filter LoRAs by space-separated keywords
-- **AND/OR Modes**: Flexible filtering logic
+- **AND/OR/OFF Modes**: Flexible filtering logic (OFF: v1.5.0)
 - **Phrase Matching**: Use quotes for exact phrases
 - **Metadata Search**: Search in filenames or embedded metadata
 - **Fast Caching**: Instant metadata access after first load
@@ -578,7 +580,7 @@ anime style, alice, blonde hair, 1girl, beautiful
 |-----------|-------------|---------|
 | `lora_folder_path` | LoRA folder path | (empty) |
 | `keyword_filter` | Space-separated keywords or quoted phrases | (empty) |
-| `filter_mode` | `AND` / `OR` | `AND` |
+| `filter_mode` | `AND` / `OR` / `OFF` | `AND` |
 | `search_in_metadata` | Search in JSON/embedded metadata | `false` |
 | `num_loras` | Number of LoRAs to select | `1` |
 | `model_strength` | MODEL strength (fixed or range) | `"1.0"` |
@@ -601,6 +603,14 @@ keyword_filter: "anime realistic"
 → Matches files containing "anime" OR "realistic"
 ```
 
+**OFF mode (v1.5.0):**
+```
+filter_mode: OFF
+keyword_filter: "anime realistic"
+→ No filtering; picks from every LoRA in the folder
+→ The keywords you typed stay, so you can switch the filter off for a while without deleting them
+```
+
 **Phrase matching:**
 ```
 keyword_filter: '"anime style" detailed'
@@ -612,6 +622,28 @@ keyword_filter: '"anime style" detailed'
 keyword_filter: '"anime style" "detailed eyes" red'
 → Must contain "anime style" AND "detailed eyes" AND "red"
 ```
+
+### Keyword Output (v1.5.0)
+
+Outputs the keywords the selected LoRA actually matched, joined with `_`. The LBW node works the same way.
+
+| `keyword_filter` | `filter_mode` | Selected LoRA (filename) | `keyword` output |
+|---|---|---|---|
+| `aaa bbb` | AND | `aaa_bbb_xxx` | `aaa_bbb` |
+| `aaa bbb` | OR | `aaa_xxx` | `aaa` |
+| `aaa bbb` | OR | `bbb_xxx` | `bbb` |
+| `"aaa bbb"` | AND / OR | `aaa bbb xxx` | `aaa_bbb` |
+| `"aaa bbb" ccc` | AND | `aaa bbb ccc` | `aaa_bbb_ccc` |
+| (empty) | AND / OR | any | (empty) |
+| (anything) | OFF | any | (empty) |
+
+- Spaces inside a phrase also become `_`
+- In OR mode, if the selected LoRA contains several of the keywords, or `num_loras` is 2 or more, every matched keyword is joined in input order (e.g. `aaa_bbb`)
+- Keywords are output with the case you typed (matching itself ignores case)
+- With `search_in_metadata` ON, keywords matched in the metadata are included too
+- Empty when `filter_mode` is OFF, when `keyword_filter` is empty, when no LoRA matched, or when `num_loras` is 0
+
+`keyword` was added as the last (ninth) output, so existing workflow connections keep working.
 
 ### Metadata Search
 

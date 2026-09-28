@@ -88,9 +88,10 @@ LoRAブロックウェイト（LBW）対応の高度なノード。精密な効�
 ### Filteredノード（Filtered & LBW）
 
 - **キーワードフィルタリング**: スペース区切りキーワード、フレーズ対応
-- **AND/ORモード**: 柔軟なフィルタリングロジック
+- **AND/OR/OFFモード**: 柔軟なフィルタリングロジック（OFFはv1.5.0）
 - **メタデータ検索**: ファイル名または埋め込みメタデータから検索
 - **高速キャッシング**: 初回読み込み後は即座にアクセス
+- **keyword出力**: 選ばれたLoRAが実際にマッチしたキーワードを出力（v1.5.0）
 
 ### LBWノード限定 🆕
 
@@ -513,10 +514,11 @@ JSONメタデータから作例プロンプトを取得。
 | `negative_text` | STRING | 完全ネガティブプロンプトテキスト |
 | `preview` | IMAGE | 選択されたLoRAのプレビュー画像バッチ（v1.1.0） |
 | `lora_text` | STRING | LoRA構文を**含む**ポジティブプロンプトテキスト（旧`positive_text`の内容、v1.4.0） |
+| `keyword` | STRING | **Filteredノードのみ**。選ばれたLoRAが実際にマッチしたキーワード（v1.5.0）。[keyword出力](#keyword出力v150)を参照 |
 
 > ⚠️ **v1.4.0での出力の変更**
 >
-> `positive_text`は`<lora:...>`を含まなくなりました。以前の内容は新しい出力`lora_text`（末尾）から出ます。他の出力は位置も型も変わっていないので、既存の接続はそのまま使えます。
+> `positive_text`は`<lora:...>`を含まなくなりました。以前の内容は新しい出力`lora_text`（末尾に追加）から出ます。他の出力は位置も型も変わっていないので、既存の接続はそのまま使えます。
 >
 > - `positive_text`をテキストエンコーダーに繋いでいた場合：つなぎ直しは不要です。`<lora:...>`が文字として読まれなくなります
 > - `positive_text`をLoRA構文の記録（プロンプトの保存やメタデータ）に使っていた場合：`lora_text`につなぎ直してください
@@ -566,7 +568,7 @@ anime style, alice, blonde hair, 1girl, beautiful
 ### 主な機能
 
 - **キーワードフィルタリング**: スペース区切りキーワードでLoRAを絞り込み
-- **AND/ORモード**: 柔軟なフィルタリングロジック
+- **AND/OR/OFFモード**: 柔軟なフィルタリングロジック（OFFはv1.5.0）
 - **フレーズマッチング**: 引用符で完全一致フレーズ
 - **メタデータ検索**: ファイル名または埋め込みメタデータから検索
 - **高速キャッシング**: 初回検索後は即座にアクセス
@@ -578,7 +580,7 @@ anime style, alice, blonde hair, 1girl, beautiful
 |-----------|------|-----------|
 | `lora_folder_path` | LoRAフォルダパス | (空) |
 | `keyword_filter` | スペース区切りキーワードまたは引用符フレーズ | (空) |
-| `filter_mode` | `AND` / `OR` | `AND` |
+| `filter_mode` | `AND` / `OR` / `OFF` | `AND` |
 | `search_in_metadata` | JSON/埋め込みメタデータから検索 | `false` |
 | `num_loras` | 選択するLoRA数 | `1` |
 | `model_strength` | MODEL強度（固定または範囲） | `"1.0"` |
@@ -601,6 +603,14 @@ keyword_filter: "anime realistic"
 → "anime"または"realistic"を含むファイルにマッチ
 ```
 
+**OFFモード（v1.5.0）:**
+```
+filter_mode: OFF
+keyword_filter: "anime realistic"
+→ フィルタを使わず、フォルダ内の全LoRAから選択
+→ 入力したキーワードは残るので、消さずに一時的にフィルタを切れる
+```
+
 **フレーズマッチング:**
 ```
 keyword_filter: '"anime style" detailed'
@@ -612,6 +622,28 @@ keyword_filter: '"anime style" detailed'
 keyword_filter: '"anime style" "detailed eyes" red'
 → "anime style"と"detailed eyes"と"red"を含む必要
 ```
+
+### keyword出力（v1.5.0）
+
+選ばれたLoRAが実際にマッチしたキーワードを、`_`で連結したテキストで出力します。LBWノードも同じです。
+
+| `keyword_filter` | `filter_mode` | 選ばれたLoRA（ファイル名） | `keyword`出力 |
+|---|---|---|---|
+| `aaa bbb` | AND | `aaa_bbb_xxx` | `aaa_bbb` |
+| `aaa bbb` | OR | `aaa_xxx` | `aaa` |
+| `aaa bbb` | OR | `bbb_xxx` | `bbb` |
+| `"aaa bbb"` | AND / OR | `aaa bbb xxx` | `aaa_bbb` |
+| `"aaa bbb" ccc` | AND | `aaa bbb ccc` | `aaa_bbb_ccc` |
+| （空欄） | AND / OR | どれでも | （空） |
+| （何でも） | OFF | どれでも | （空） |
+
+- フレーズ内のスペースも`_`になります
+- ORモードで、選ばれたLoRAが複数のキーワードを含む場合や、`num_loras`が2以上の場合は、マッチしたキーワードをすべて入力順に連結します（例：`aaa_bbb`）
+- 大文字小文字は入力どおりに出力します（マッチの判定自体は区別しません）
+- `search_in_metadata`がONの場合は、メタデータ側でマッチしたキーワードも含まれます
+- `filter_mode`がOFFのとき、`keyword_filter`が空欄のとき、条件に合うLoRAがなかったとき、`num_loras`が0のときは空文字です
+
+`keyword`は出力の末尾（9番目）に追加したので、既存のワークフローの接続はそのまま使えます。
 
 ### メタデータ検索
 

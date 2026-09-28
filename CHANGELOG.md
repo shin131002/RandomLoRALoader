@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.5.0] - 2026-09-29
+
+### Added
+
+#### `keyword` output (Filtered Random LoRA Loader / Filtered Random LoRA Loader (LBW))
+- New **`keyword`** STRING output with the `keyword_filter` keywords the selected LoRA actually matched, joined with `_`
+  - AND: all keywords (`aaa bbb` → `aaa_bbb`)
+  - OR: only the keywords that matched (`aaa bbb` → `aaa` or `bbb`). If the LoRA contains several of them, or `num_loras` is 2 or more, every matched keyword is joined in input order
+  - Spaces inside a quoted phrase also become `_` (`"aaa bbb" ccc` with AND → `aaa_bbb_ccc`)
+  - Case is kept as typed; keywords matched in metadata (`search_in_metadata`) are included
+  - Empty when `filter_mode` is OFF, when `keyword_filter` is empty, when no LoRA matched, or when `num_loras` is 0
+- Added as the **last** slot, so existing workflow connections stay valid. LoRA selection and all other outputs are unchanged (same seed, same result as 1.4.0)
+- Random LoRA Loader (3 folders) has no keyword filter and is unchanged
+
+#### `filter_mode`: new `OFF` option (Filtered Random LoRA Loader / Filtered Random LoRA Loader (LBW))
+- `OFF` turns the keyword filter off while keeping the typed keywords, so it can be switched off for a while without deleting them. Picks the same LoRAs as an empty `keyword_filter`
+- Added after `AND` / `OR`; the default stays `AND`. Saved workflows keep their `AND` / `OR` setting
+
+---
+
 ## [1.4.0] - 2026-09-24
 
 ### Changed
